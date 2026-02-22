@@ -153,12 +153,13 @@ impl PieceTable {
             None
         };
 
-        if let Some(prev) = prev_idx.and_then(|i| self.pieces.get_mut(i)) {
-            if prev.buf_kind == buf_kind && prev.range.end == range.start {
-                prev.range.end = range.end;
+        if let Some(prev) = prev_idx.and_then(|i| self.pieces.get_mut(i))
+            && prev.buf_kind == buf_kind
+            && prev.range.end == range.start
+        {
+            prev.range.end = range.end;
 
-                return false;
-            }
+            return false;
         }
 
         true

@@ -1,7 +1,7 @@
 use std::ops::{AddAssign, Sub, SubAssign};
 
 /// Contains all LeafNodes with a total summary of its children's summaries
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct InternalNode {
     pub summary: crate::line_index::line_summary::LineSummary,
     pub children: Vec<Node>,
@@ -10,8 +10,8 @@ pub struct InternalNode {
 /// Contains the data of a line
 #[derive(Debug)]
 pub struct LeafNode {
-    summary: crate::line_index::line_summary::LineSummary,
-    line_lengths: Vec<u64>,
+    pub summary: crate::line_index::line_summary::LineSummary,
+    pub line_lengths: Vec<u64>,
 }
 
 #[derive(Debug)]
@@ -22,13 +22,23 @@ pub enum Node {
     Leaf(LeafNode),
 }
 
-const MAX_CHILDREN: usize = 16;
+impl Default for LeafNode {
+    fn default() -> Self {
+        Self {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 0,
+            },
+            line_lengths: vec![0],
+        }
+    }
+}
 
 impl Node {
     /// Returns a copy
     /// of this node's `LineSummary`
     #[inline]
-    fn summary(&self) -> &crate::line_index::line_summary::LineSummary {
+    pub fn summary(&self) -> &crate::line_index::line_summary::LineSummary {
         match self {
             Node::Internal(internal_node) => &internal_node.summary,
             Node::Leaf(leaf_node) => &leaf_node.summary,
@@ -36,7 +46,7 @@ impl Node {
     }
 
     #[inline]
-    fn summary_mut(&mut self) -> &mut crate::line_index::line_summary::LineSummary {
+    pub fn summary_mut(&mut self) -> &mut crate::line_index::line_summary::LineSummary {
         match self {
             Node::Internal(internal_node) => &mut internal_node.summary,
             Node::Leaf(leaf_node) => &mut leaf_node.summary,
@@ -99,7 +109,7 @@ impl LeafNode {
 
                 false
             })
-            .unwrap_or(self.line_lengths.len().sub(1));
+            .unwrap_or(self.line_lengths.len().saturating_sub(1));
         let old_line_len = self.line_lengths[target_idx];
         let line_prefix_len = abs_byte_offset;
         let line_suffix_len = old_line_len.sub(abs_byte_offset);
@@ -177,7 +187,7 @@ impl LeafNode {
     pub fn split_if_needed(&mut self) -> Option<LeafNode> {
         let line_len = self.line_lengths.len();
 
-        if line_len <= MAX_CHILDREN {
+        if line_len <= crate::line_index::MAX_CHILDREN {
             return None;
         }
 
@@ -201,6 +211,11 @@ impl LeafNode {
 }
 
 impl InternalNode {
+    pub fn add_leaf_child_node(&mut self, leaf_node: LeafNode) {
+        self.summary.add(&leaf_node.summary);
+        self.children.push(Node::Leaf(leaf_node));
+    }
+
     pub fn add_child(
         &mut self,
         mut abs_byte_offset: u64,
@@ -230,7 +245,7 @@ impl InternalNode {
     pub fn split_if_needed(&mut self) -> Option<InternalNode> {
         let children_len = self.children.len();
 
-        if children_len <= MAX_CHILDREN {
+        if children_len <= crate::line_index::MAX_CHILDREN {
             return None;
         }
 
@@ -364,8 +379,8 @@ impl Node {
 impl LeafNode {
     pub fn remove_line_range(
         &mut self,
-        mut start: usize,
-        mut end: usize,
+        start: usize,
+        end: usize,
     ) -> Result<u64, crate::enums::MathError> {
         let remove_start: usize;
         let remove_end: usize;
@@ -401,34 +416,29 @@ impl InternalNode {
         while idx < self.children.len() && start <= end {
             let child_line_count = self.children[idx].summary().line_count;
 
-            if start >= child_line_count {
-                start.sub_assign(child_line_count);
-                end.sub_assign(child_line_count);
-                idx.add_assign(1);
+            if start < child_line_count {
+                // Recurse into the child
+                bytes_removed.add_assign(
+                    self.children[idx].remove_line_range(start, end.min(child_line_count - 1))?,
+                );
 
-                continue;
-            }
+                if self.children[idx].summary().line_count == 0 {
+                    self.children.remove(idx);
+                } else {
+                    idx.add_assign(1);
+                }
 
-            let child_line_start = start;
-            let child_line_end = end.min(child_line_count - 1);
+                if end < child_line_count {
+                    break;
+                }
 
-            // Recurse into the child
-            bytes_removed.add_assign(
-                self.children[idx].remove_line_range(child_line_start, child_line_end)?,
-            );
-
-            if self.children[idx].summary().line_count == 0 {
-                self.children.remove(idx);
+                start = 0;
             } else {
+                start.sub_assign(child_line_count);
                 idx.add_assign(1);
-            }
-
-            if end < child_line_count {
-                break;
             }
 
             end.sub_assign(child_line_count);
-            start = 0;
         }
 
         self.summary.line_count = self.children.iter().map(|c| c.summary().line_count).sum();
@@ -436,6 +446,198 @@ impl InternalNode {
         self.summary.byte_len.sub_assign(bytes_removed);
 
         Ok(bytes_removed)
+    }
+}
+
+/*
+
+========================
+======= GETTER =======
+========================
+
+ */
+impl Node {
+    #[inline]
+    pub fn get_line_length_at(&self, line_idx: usize) -> Option<u64> {
+        match self {
+            Node::Leaf(leaf_node) => leaf_node.get_line_length_at(line_idx),
+            Node::Internal(internal_node) => internal_node.get_line_length_at(line_idx),
+        }
+    }
+
+    #[inline]
+    pub fn line_idx_to_abs_idx(&self, line_idx: usize) -> Option<u64> {
+        match self {
+            Node::Leaf(leaf_node) => leaf_node.line_idx_to_abs_idx(line_idx),
+            Node::Internal(internal_node) => internal_node.line_idx_to_abs_idx(line_idx),
+        }
+    }
+
+    #[inline]
+    pub fn abs_idx_to_line_idx(&self, abs_idx: u64) -> Option<usize> {
+        match self {
+            Node::Leaf(leaf_node) => leaf_node.abs_idx_to_line_idx(abs_idx),
+            Node::Internal(internal_node) => internal_node.abs_idx_to_line_idx(abs_idx),
+        }
+    }
+
+    #[inline]
+    pub fn lines<'node>(
+        &'node self,
+        target_line: &mut usize,
+        current_abs_idx: &mut u64,
+        stack: &mut Vec<(&'node Node, usize)>,
+    ) {
+        match self {
+            Node::Leaf(leaf_node) => {
+                leaf_node.lines(self, target_line, current_abs_idx, stack);
+            }
+            Node::Internal(internal_node) => {
+                internal_node.lines(self, target_line, current_abs_idx, stack);
+            }
+        }
+    }
+}
+
+impl LeafNode {
+    pub fn get_line_length_at(&self, line_idx: usize) -> Option<u64> {
+        self.line_lengths.get(line_idx).copied()
+    }
+
+    pub fn line_idx_to_abs_idx(&self, line_idx: usize) -> Option<u64> {
+        if line_idx >= self.line_lengths.len() {
+            return None;
+        }
+
+        Some(
+            self.line_lengths[..line_idx.min(self.line_lengths.len())]
+                .iter()
+                .sum::<u64>(),
+        )
+    }
+
+    pub fn abs_idx_to_line_idx(&self, mut abs_idx: u64) -> Option<usize> {
+        self.line_lengths.iter().position(|line_length| {
+            if abs_idx < *line_length {
+                return true;
+            }
+
+            abs_idx.sub_assign(*line_length);
+
+            false
+        })
+    }
+
+    pub fn lines<'node>(
+        &self,
+        node_ref: &'node Node,
+        target_line: &mut usize,
+        current_abs_idx: &mut u64,
+        stack: &mut Vec<(&'node Node, usize)>,
+    ) {
+        let idx = (*target_line).min(self.line_lengths.len());
+        let sum = self.line_lengths[..idx].iter().sum::<u64>();
+
+        (*current_abs_idx).add_assign(sum);
+        stack.push((node_ref, idx));
+    }
+}
+
+impl InternalNode {
+    pub fn get_line_length_at(&self, mut line_idx: usize) -> Option<u64> {
+        if line_idx >= self.summary.line_count {
+            return None;
+        }
+
+        for child in &self.children {
+            let line_count = child.summary().line_count;
+
+            if line_idx < line_count {
+                return child.get_line_length_at(line_idx);
+            }
+
+            line_idx.sub_assign(line_count);
+        }
+
+        unreachable!("line_idx bounds checked prior to loop");
+    }
+
+    pub fn line_idx_to_abs_idx(&self, mut line_idx: usize) -> Option<u64> {
+        if line_idx >= self.summary.line_count {
+            return None;
+        }
+
+        let mut abs_idx = 0u64;
+
+        for child in &self.children {
+            let child_line_count = child.summary().line_count;
+            let child_byte_len = child.summary().byte_len;
+
+            if line_idx < child_line_count {
+                if let Some(idx) = child.line_idx_to_abs_idx(line_idx) {
+                    abs_idx.add_assign(idx);
+                }
+
+                break;
+            }
+
+            line_idx.sub_assign(child_line_count);
+            abs_idx.add_assign(child_byte_len);
+        }
+
+        Some(abs_idx)
+    }
+
+    pub fn abs_idx_to_line_idx(&self, mut abs_idx: u64) -> Option<usize> {
+        if abs_idx >= self.summary.byte_len {
+            return None;
+        }
+
+        let mut line_idx = 0;
+
+        for child in &self.children {
+            let summary = child.summary();
+
+            if abs_idx < summary.byte_len {
+                if let Some(idx) = child.abs_idx_to_line_idx(abs_idx) {
+                    line_idx.add_assign(idx);
+                }
+
+                break;
+            }
+
+            abs_idx.sub_assign(summary.byte_len);
+            line_idx.add_assign(summary.line_count);
+        }
+
+        Some(line_idx)
+    }
+
+    pub fn lines<'node>(
+        &'node self,
+        node_ref: &'node Node,
+        target_line: &mut usize,
+        current_abs_idx: &mut u64,
+        stack: &mut Vec<(&'node Node, usize)>,
+    ) {
+        for (i, child) in self.children.iter().enumerate() {
+            let child_line_count = child.summary().line_count;
+
+            if *target_line < child_line_count {
+                stack.push((node_ref, i));
+
+                return child.lines(target_line, current_abs_idx, stack);
+            }
+
+            (*target_line).sub_assign(child_line_count);
+            (*current_abs_idx).add_assign(child.summary().byte_len);
+        }
+
+        stack.push((node_ref, self.children.len()));
+        self.children
+            .last()
+            .expect("There will always be at least one child")
+            .lines(target_line, current_abs_idx, stack);
     }
 }
 
@@ -502,7 +704,7 @@ mod tests {
     #[test]
     fn test_leaf_split_if_needed() {
         let mut leaf = create_empty_leaf();
-        // Force a split by adding more lines than MAX_CHILDREN (16)
+        // Force a split by adding more lines than crate::line_index::MAX_CHILDREN (16)
         // Adding 18 lines of "A\n" (2 bytes each)
         let bytes = b"A\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\nA\n";
         let split_result = leaf.add_child(0, bytes).unwrap();
@@ -572,16 +774,8 @@ mod tests {
 
         let mut internal = create_empty_internal();
 
-        internal.children.push(Node::Leaf(leaf1));
-        internal.children.push(Node::Leaf(leaf2));
-
-        // Cascade the summaries manually since we used Vec::push instead of InternalNode::add_child
-        internal.summary.line_count = internal
-            .children
-            .iter()
-            .map(|c| c.summary().line_count)
-            .sum();
-        internal.summary.byte_len = internal.children.iter().map(|c| c.summary().byte_len).sum();
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
 
         // 3 lines + 4 lines = 7 lines total!
         assert_eq!(internal.summary.line_count, 7);
@@ -640,16 +834,9 @@ mod tests {
         assert_eq!(leaf2.summary.line_count, 3);
 
         let mut internal = create_empty_internal();
-        internal.children.push(Node::Leaf(leaf1));
-        internal.children.push(Node::Leaf(leaf2));
 
-        // Cascade the summaries manually since we used Vec::push instead of InternalNode::add_child
-        internal.summary.line_count = internal
-            .children
-            .iter()
-            .map(|c| c.summary().line_count)
-            .sum();
-        internal.summary.byte_len = internal.children.iter().map(|c| c.summary().byte_len).sum();
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
         // Remove lines 1 through 3.
         // Line 1 is from leaf 1, line 3 is from leaf 2
         let removed_bytes = internal.remove_line_range(1, 3).unwrap();
@@ -683,14 +870,8 @@ mod tests {
 
         let mut internal = create_empty_internal();
 
-        internal.children.push(Node::Leaf(leaf1));
-        internal.children.push(Node::Leaf(leaf2));
-        internal.summary.line_count = internal
-            .children
-            .iter()
-            .map(|c| c.summary().line_count)
-            .sum();
-        internal.summary.byte_len = internal.children.iter().map(|c| c.summary().byte_len).sum();
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
 
         // Remove only line 0 & 1 (empty line). This empties leaf1 entirely.
         internal.remove_line_range(0, 1).unwrap();
@@ -702,5 +883,241 @@ mod tests {
             assert_eq!(l.summary.byte_len, 2);
             assert_eq!(l.line_lengths, vec![2, 0]); // The remaining "2\n"
         }
+    }
+
+    #[test]
+    fn test_get_line_length() {
+        let mut leaf1 = create_empty_leaf();
+
+        leaf1.add_child(0, b"1\n2\n").unwrap();
+        assert_eq!(leaf1.summary.byte_len, 4);
+        assert_eq!(leaf1.summary.line_count, 3);
+        assert_eq!(leaf1.get_line_length_at(0).unwrap(), 2);
+        assert_eq!(leaf1.get_line_length_at(1).unwrap(), 2);
+        assert_eq!(leaf1.get_line_length_at(2).unwrap(), 0);
+        assert_eq!(leaf1.get_line_length_at(3), None);
+
+        let mut leaf2 = create_empty_leaf();
+
+        leaf2.add_child(0, b"3\n4\n").unwrap();
+        assert_eq!(leaf2.summary.byte_len, 4);
+        assert_eq!(leaf2.summary.line_count, 3);
+        assert_eq!(leaf2.get_line_length_at(0).unwrap(), 2);
+        assert_eq!(leaf2.get_line_length_at(1).unwrap(), 2);
+        assert_eq!(leaf2.get_line_length_at(2).unwrap(), 0);
+        assert_eq!(leaf2.get_line_length_at(3), None);
+
+        let mut internal = create_empty_internal();
+
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
+
+        assert_eq!(internal.get_line_length_at(0).unwrap(), 2);
+        assert_eq!(internal.get_line_length_at(1).unwrap(), 2);
+        assert_eq!(internal.get_line_length_at(2).unwrap(), 0);
+        assert_eq!(internal.get_line_length_at(3).unwrap(), 2);
+        assert_eq!(internal.get_line_length_at(4).unwrap(), 2);
+        assert_eq!(internal.get_line_length_at(5).unwrap(), 0);
+        assert_eq!(internal.get_line_length_at(6), None);
+    }
+
+    #[test]
+    fn test_line_idx_to_abs_idx() {
+        let mut leaf1 = create_empty_leaf();
+
+        leaf1.add_child(0, b"1\n2\n").unwrap();
+        assert_eq!(leaf1.summary.byte_len, 4);
+        assert_eq!(leaf1.summary.line_count, 3);
+        assert_eq!(leaf1.line_idx_to_abs_idx(0).unwrap(), 0);
+        assert_eq!(leaf1.line_idx_to_abs_idx(1).unwrap(), 2);
+        assert_eq!(leaf1.line_idx_to_abs_idx(2).unwrap(), 4);
+        assert_eq!(leaf1.line_idx_to_abs_idx(3), None);
+
+        let mut leaf2 = create_empty_leaf();
+
+        leaf2.add_child(0, b"3\n4\n").unwrap();
+        assert_eq!(leaf2.summary.byte_len, 4);
+        assert_eq!(leaf2.summary.line_count, 3);
+        assert_eq!(leaf2.line_idx_to_abs_idx(0).unwrap(), 0);
+        assert_eq!(leaf2.line_idx_to_abs_idx(1).unwrap(), 2);
+        assert_eq!(leaf2.line_idx_to_abs_idx(2).unwrap(), 4);
+        assert_eq!(leaf2.line_idx_to_abs_idx(3), None);
+
+        let mut internal = create_empty_internal();
+
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
+
+        assert_eq!(internal.line_idx_to_abs_idx(0).unwrap(), 0);
+        assert_eq!(internal.line_idx_to_abs_idx(1).unwrap(), 2);
+        assert_eq!(internal.line_idx_to_abs_idx(2).unwrap(), 4);
+        assert_eq!(internal.line_idx_to_abs_idx(3).unwrap(), 4); // still 4 because 3rd line is empty
+        assert_eq!(internal.line_idx_to_abs_idx(4).unwrap(), 6);
+        assert_eq!(internal.line_idx_to_abs_idx(5).unwrap(), 8);
+        assert_eq!(internal.line_idx_to_abs_idx(6), None);
+    }
+
+    #[test]
+    fn test_abs_idx_to_line_idx() {
+        let mut leaf1 = create_empty_leaf();
+
+        leaf1.add_child(0, b"1\n2\n").unwrap();
+        assert_eq!(leaf1.summary.byte_len, 4);
+        assert_eq!(leaf1.summary.line_count, 3);
+        assert_eq!(leaf1.abs_idx_to_line_idx(0).unwrap(), 0);
+        assert_eq!(leaf1.abs_idx_to_line_idx(1).unwrap(), 0);
+        assert_eq!(leaf1.abs_idx_to_line_idx(2).unwrap(), 1);
+        assert_eq!(leaf1.abs_idx_to_line_idx(3).unwrap(), 1);
+        assert_eq!(leaf1.abs_idx_to_line_idx(4), None);
+
+        let mut leaf2 = create_empty_leaf();
+
+        leaf2.add_child(0, b"3\n4\n").unwrap();
+        assert_eq!(leaf2.summary.byte_len, 4);
+        assert_eq!(leaf2.summary.line_count, 3);
+        assert_eq!(leaf2.abs_idx_to_line_idx(0).unwrap(), 0);
+        assert_eq!(leaf2.abs_idx_to_line_idx(1).unwrap(), 0);
+        assert_eq!(leaf2.abs_idx_to_line_idx(2).unwrap(), 1);
+        assert_eq!(leaf2.abs_idx_to_line_idx(3).unwrap(), 1);
+        assert_eq!(leaf2.abs_idx_to_line_idx(4), None);
+
+        let mut internal = create_empty_internal();
+
+        internal.add_leaf_child_node(leaf1);
+        internal.add_leaf_child_node(leaf2);
+
+        assert_eq!(internal.abs_idx_to_line_idx(0).unwrap(), 0);
+        assert_eq!(internal.abs_idx_to_line_idx(1).unwrap(), 0);
+        assert_eq!(internal.abs_idx_to_line_idx(2).unwrap(), 1);
+        assert_eq!(internal.abs_idx_to_line_idx(3).unwrap(), 1);
+        assert_eq!(internal.abs_idx_to_line_idx(4).unwrap(), 3); // 3 because 3rd line is empty
+        assert_eq!(internal.abs_idx_to_line_idx(5).unwrap(), 3);
+        assert_eq!(internal.abs_idx_to_line_idx(6).unwrap(), 4);
+        assert_eq!(internal.abs_idx_to_line_idx(7).unwrap(), 4);
+        assert_eq!(internal.abs_idx_to_line_idx(8), None);
+    }
+
+    fn make_leaf(lengths: Vec<u64>) -> LeafNode {
+        LeafNode {
+            line_lengths: lengths.clone(),
+            summary: LineSummary {
+                line_count: lengths.len(),
+                byte_len: lengths.iter().sum::<u64>(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_leaf_get_correct_line_start() {
+        let leaf = Node::Leaf(make_leaf(vec![10, 20, 15])); //3 lines, 45 bytes
+        let mut stack = Vec::new();
+        let mut target_line = 1; // 2nd line
+        let mut current_abs_idx = 100;
+
+        leaf.lines(&mut target_line, &mut current_abs_idx, &mut stack);
+
+        // since we're targeting 2nd line, absolute starting index of 2nd line
+        // in the buffer/overall string is right after
+        // the previous line, so 100th idx plus length of previous line
+        // is the correct value, which is 110.
+        assert_eq!(current_abs_idx, 110);
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].1, 1);
+    }
+
+    #[test]
+    fn test_leaf_line_out_of_bounds() {
+        let leaf = Node::Leaf(make_leaf(vec![10, 20])); // 2 lines
+        let mut target_line = 5; // Way out of bounds!
+        let mut current_byte = 0;
+        let mut stack = Vec::new();
+
+        leaf.lines(&mut target_line, &mut current_byte, &mut stack);
+        // The .min() should cap the index at 2 (the len of the leaf)
+        // It should sum all lines: 10 + 20 = 30
+        assert_eq!(current_byte, 30);
+        assert_eq!(stack[0].1, 2); // Pushed the capped index
+    }
+
+    #[test]
+    fn test_internal_node_routing() {
+        let mut internal = InternalNode::default();
+
+        internal.add_leaf_child_node(make_leaf(vec![10, 15]));
+        internal.add_leaf_child_node(make_leaf(vec![20, 25]));
+
+        let wrapped = Node::Internal(internal);
+        let mut target_line = 3;
+        let mut abs_idx = 0;
+        let mut stack = Vec::new();
+
+        wrapped.lines(&mut target_line, &mut abs_idx, &mut stack);
+        // Should have deducted Leaf A's 2 lines from target_line
+        assert_eq!(target_line, 1);
+        // Should have accumulated Leaf A's bytes (10 + 15 = 25)
+        // PLUS Leaf B's first line (20), so 25 + 20 = 45
+        assert_eq!(abs_idx, 45);
+        // Stack should show: [ (Root, visited child 1), (Leaf B, visited line index 1) ]
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack[0].1, 1); // Root's child index
+        assert_eq!(stack[1].1, 1); // Leaf B's line index
+    }
+
+    #[test]
+    fn test_internal_node_out_of_bounds_fallback() {
+        let mut internal = InternalNode::default();
+
+        internal.add_leaf_child_node(make_leaf(vec![10, 10]));
+
+        let root = Node::Internal(internal);
+        let mut target_line = 100; // Completely out of bounds
+        let mut current_byte = 0;
+        let mut stack = Vec::new();
+
+        root.lines(&mut target_line, &mut current_byte, &mut stack);
+        // It should deduct the child's 2 lines, leaving 98
+        assert_eq!(target_line, 98);
+        // The stack should push `children.len()` (1) as the index to show it exhausted the node
+        assert_eq!(stack[0].1, 1);
+        // It should still have recursed into the last child (the leaf) and capped out there
+        assert_eq!(stack[1].1, 2); // Leaf length
+    }
+
+    #[test]
+    #[should_panic = "There will always be at least one child"]
+    fn test_internal_node_no_children_panics() {
+        // An internal node with 0 children violates B-Tree rules.
+        // Your code uses .expect() to catch this, so this test proves the safety net works.
+        let broken_root = Node::Internal(InternalNode::default());
+        let mut target_line = 5;
+        let mut current_byte = 0;
+        let mut stack = Vec::new();
+
+        // This should trigger the panic
+        broken_root.lines(&mut target_line, &mut current_byte, &mut stack);
+    }
+
+    #[test]
+    fn test_deep_recursion_no_stack_overflow() {
+        // Standard Rust thread stack size is 2MB, which can easily handle ~10k+ deep simple recursions.
+        let mut current_node = Node::Leaf(make_leaf(vec![10]));
+
+        for _ in 0..5000 {
+            current_node = Node::Internal(InternalNode {
+                summary: *current_node.summary(),
+                children: vec![current_node],
+            });
+        }
+
+        let mut target_line = 0;
+        let mut current_byte = 0;
+        // Pre-allocate capacity just like iter_lines does
+        let mut stack = Vec::with_capacity(5001);
+
+        // If this doesn't stack overflow, the test passes!
+        current_node.lines(&mut target_line, &mut current_byte, &mut stack);
+
+        // We expect exactly 5001 items in the stack (5000 internals + 1 leaf)
+        assert_eq!(stack.len(), 5001);
     }
 }
