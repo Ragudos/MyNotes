@@ -1,4 +1,4 @@
-use std::ops::{AddAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Debug)]
 pub struct PieceTable {
@@ -555,6 +555,49 @@ impl PieceTable {
         // and pieces) are now structurally invalid.
         self.undo_stack.clear();
         self.redo_stack.clear();
+    }
+}
+
+impl PieceTable {
+    pub fn fmt_helper(
+        &self,
+        mut pos: u64,
+        mut len: u64,
+        f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        for piece in &self.pieces {
+            let piece_len = piece.len();
+
+            if pos >= piece_len {
+                pos.sub_assign(piece_len);
+
+                continue;
+            }
+
+            let take = piece_len.sub(pos).min(len);
+            let start = piece.range.start.add(pos);
+            let slice = SliceOfWithStartEnd::slice_of(self, piece, start, start + take)
+                .map_err(|_| std::fmt::Error)?;
+
+            match std::str::from_utf8(slice) {
+                Ok(valid_str) => f.write_str(valid_str)?,
+                Err(_) => {
+                    let lossy = String::from_utf8_lossy(slice);
+
+                    f.write_str(&lossy)?;
+                }
+            }
+
+            len.sub_assign(take);
+
+            if len == 0 {
+                break;
+            }
+
+            pos = 0;
+        }
+
+        Ok(())
     }
 }
 

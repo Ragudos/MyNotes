@@ -499,26 +499,9 @@ impl TextBuffer {
 
 impl std::fmt::Display for TextBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Iterate over all lines using the B-Tree iterator we built
-        for (_, range) in self.iter() {
-            // Fetch the string for each line's byte range from the Piece Table
-            match self
-                .piece_table
-                .get_string(range.start, range.end - range.start)
-            {
-                Ok(line_text) => {
-                    // Write the resolved text directly into the formatter
-                    write!(f, "{}", line_text)?;
-                }
-                Err(_) => {
-                    // If the piece table math fails (e.g., out of bounds),
-                    // we signal to the formatter that the display operation failed.
-                    return Err(std::fmt::Error);
-                }
-            }
-        }
+        let total_len = self.line_index.root.summary().byte_len;
 
-        Ok(())
+        self.piece_table.fmt_helper(0, total_len, f)
     }
 }
 
