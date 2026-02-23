@@ -5,3 +5,7 @@
 /// by a newline '\n' character.
 pub mod piece;
 pub mod table;
+
+/// 1 KB of initialized buffer vector for piece table's
+/// text buffer (to be added)
+pub const BASELINE_CAPACITY: usize = 1024;
