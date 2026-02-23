@@ -1117,4 +1117,42 @@ mod btree_line_index_node_tests {
         // We expect exactly 5001 items in the stack (5000 internals + 1 leaf)
         assert_eq!(stack.len(), 5001);
     }
+
+    #[test]
+    fn test_leaf_node_insert_newline_at_exact_line_boundary() {
+        // 1. Arrange: Setup a leaf node representing exactly "Line1"
+        let mut leaf = LeafNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 5,
+            },
+            line_lengths: vec![5],
+        };
+
+        // 2. Act: Insert "\nLine2" at absolute offset 5 (the exact end of the line)
+        // "\n" is 1 byte, "Line2" is 5 bytes. Total = 6 bytes.
+        let result = leaf.add_child(5, b"\nLine2");
+
+        // Ensure the operation didn't error out
+        assert!(result.is_ok());
+
+        // 3. Assert: Verify the tree metadata updated correctly
+        // The first line should now be "Line1\n" (6 bytes)
+        // The second line should be "Line2" (5 bytes)
+        assert_eq!(
+            leaf.line_lengths,
+            vec![6, 5],
+            "Bug caught: Line lengths failed to split correctly at the boundary!"
+        );
+
+        // Verify the summary totals are correct
+        assert_eq!(
+            leaf.summary.byte_len, 11,
+            "Byte length summary is incorrect"
+        );
+        assert_eq!(
+            leaf.summary.line_count, 2,
+            "Line count summary is incorrect"
+        );
+    }
 }
