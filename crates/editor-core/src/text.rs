@@ -471,32 +471,6 @@ impl TextBuffer {
     }
 }
 
-/*
-
-===============================
-========= UNDO & REDO =========
-===============================
-
-*/
-
-impl TextBuffer {
-    pub fn undo(&mut self) {
-        // 1. Pop from `self.piece_table.undo_stack`.
-        // 2. Revert the piece table state.
-        // 3. Critically: You must also apply the inverse structural changes to `self.line_index`!
-        // 4. Push to `self.piece_table.redo_stack`.
-        todo!("Implement undo")
-    }
-
-    pub fn redo(&mut self) {
-        // 1. Pop from `self.piece_table.redo_stack`.
-        // 2. Reapply the piece table state.
-        // 3. Apply the structural changes to `self.line_index`.
-        // 4. Push to `self.piece_table.undo_stack`.
-        todo!("Implement redo")
-    }
-}
-
 impl std::fmt::Display for TextBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_len = self.line_index.root.summary().byte_len;
