@@ -7,6 +7,7 @@ pub struct Position {
 }
 
 impl Position {
+    #[must_use]
     pub fn new(row: usize, column: usize) -> Self {
         Self { row, column }
     }
@@ -144,13 +145,13 @@ mod tests {
     #[test]
     fn test_cursor_invert() {
         let mut cursor = Cursor::new_selection(Position::new(1, 5), Position::new(3, 15));
-        
+
         cursor.invert();
         assert_eq!(cursor.anchor, Position::new(3, 15));
         assert_eq!(cursor.head, Position::new(1, 5));
 
         let (start, end) = cursor.range();
-        
+
         assert_eq!(start, Position::new(1, 5));
         assert_eq!(end, Position::new(3, 15));
         // Inverting again should restore original state
@@ -159,19 +160,19 @@ mod tests {
         assert_eq!(cursor.head, Position::new(3, 15));
 
         let (start, end) = cursor.range();
-        
+
         assert_eq!(start, Position::new(1, 5));
         assert_eq!(end, Position::new(3, 15));
 
         // Inverting a cursor with no selection should have no effect
         let mut cursor = Cursor::new(2, 8);
-        
+
         cursor.invert();
         assert_eq!(cursor.anchor, Position::new(2, 8));
         assert_eq!(cursor.head, Position::new(2, 8));
 
         let (start, end) = cursor.range();
-        
+
         assert_eq!(start, Position::new(2, 8));
         assert_eq!(end, Position::new(2, 8));
     }
