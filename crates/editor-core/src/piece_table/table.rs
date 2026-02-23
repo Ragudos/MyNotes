@@ -8,9 +8,6 @@ pub struct PieceTable {
     pub buf: Vec<u8>,
     /// Ordered list of pieces describing the visible document.
     pub pieces: Vec<crate::piece_table::piece::Piece>,
-
-    pub undo_stack: Vec<crate::enums::Edit>,
-    pub redo_stack: Vec<crate::enums::Edit>,
 }
 
 pub trait SliceOfWithStartEnd {
@@ -52,8 +49,6 @@ impl PieceTable {
             original: mmap_file,
             buf: Vec::with_capacity(crate::piece_table::BASELINE_CAPACITY),
             pieces,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
         })
     }
 }
@@ -169,7 +164,7 @@ impl PieceTable {
         true
     }
 
-    fn insert_no_history(
+    fn insert_logic(
         &mut self,
         pos: u64,
         range: std::ops::Range<u64>,
@@ -254,12 +249,7 @@ impl PieceTable {
             .ok_or(crate::enums::MathError::Overflow)?;
 
         self.buf.extend_from_slice(bytes);
-        self.insert_no_history(pos, start..end, crate::enums::BufferKind::Add)?;
-        self.undo_stack.push(crate::enums::Edit::Insert {
-            pos,
-            range: start..end,
-        });
-        self.redo_stack.clear();
+        self.insert_logic(pos, start..end, crate::enums::BufferKind::Add)?;
 
         Ok(())
     }
@@ -274,7 +264,7 @@ impl PieceTable {
         )
     }
 
-    fn delete_no_history(
+    fn delete_logic(
         &mut self,
         pos: u64,
         mut len: u64,
@@ -367,77 +357,16 @@ impl PieceTable {
         Ok(removed)
     }
 
-    pub fn delete(&mut self, pos: u64, len: u64) -> Result<(), crate::enums::MathError> {
+    pub fn delete(
+        &mut self,
+        pos: u64,
+        len: u64,
+    ) -> Result<Vec<crate::piece_table::piece::Piece>, crate::enums::MathError> {
         if len == 0 {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
-        let removed = self.delete_no_history(pos, len)?;
-
-        self.undo_stack
-            .push(crate::enums::Edit::Delete { pos, len, removed });
-        self.redo_stack.clear();
-
-        Ok(())
-    }
-}
-
-/*
-
-====================================
-=========== UNDO / REDO ============
-====================================
-
-*/
-
-impl PieceTable {
-    pub fn undo(&mut self) -> Result<(), crate::enums::MathError> {
-        let Some(cmd) = self.undo_stack.pop() else {
-            return Ok(());
-        };
-
-        match &cmd {
-            crate::enums::Edit::Insert { pos, range, .. } => {
-                self.delete_no_history(*pos, range.end - range.start)?;
-                self.redo_stack.push(cmd);
-            }
-            crate::enums::Edit::Delete { pos, removed, .. } => {
-                let mut delete_position = *pos;
-
-                for piece in removed {
-                    self.insert_no_history(delete_position, piece.range.clone(), piece.buf_kind)?;
-                    delete_position.add_assign(piece.len());
-                }
-
-                self.redo_stack.push(cmd);
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn redo(&mut self) -> Result<(), crate::enums::MathError> {
-        let Some(cmd) = self.redo_stack.pop() else {
-            return Ok(());
-        };
-
-        match &cmd {
-            crate::enums::Edit::Insert { pos, range, .. } => {
-                self.insert_no_history(*pos, range.clone(), crate::enums::BufferKind::Add)?;
-                self.undo_stack.push(cmd);
-            }
-            crate::enums::Edit::Delete { pos, len, .. } => {
-                let removed = self.delete_no_history(*pos, *len)?;
-
-                self.undo_stack.push(crate::enums::Edit::Delete {
-                    pos: *pos,
-                    len: *len,
-                    removed,
-                });
-            }
-        }
-
-        Ok(())
+        self.delete_logic(pos, len)
     }
 }
 
@@ -562,13 +491,6 @@ impl PieceTable {
             buf_kind: crate::enums::BufferKind::Original,
             range: 0..file_size,
         }];
-
-        // 5. Clear the undo stack (Crucial Step!)
-        // Because we just wiped out the old piece boundaries and indices,
-        // any previous undo commands (which point to specific old offsets
-        // and pieces) are now structurally invalid.
-        self.undo_stack.clear();
-        self.redo_stack.clear();
     }
 }
 
@@ -663,68 +585,6 @@ mod piece_table_tests {
         assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"hello world");
     }
 
-    #[test]
-    fn undo_redo_insert() {
-        let mut pt = pt_from_str("abc");
-
-        pt.insert(1, b"X").unwrap();
-        pt.undo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"abc");
-        pt.redo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"aXbc");
-    }
-
-    #[test]
-    fn undo_redo_delete() {
-        let mut pt = pt_from_str("abcdef");
-
-        pt.delete(2, 2).unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"abef");
-        pt.undo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"abcdef");
-        pt.redo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"abef");
-    }
-
-    #[test]
-    fn test_undo_redo_multiple_inserts() {
-        let mut pt = pt_from_str(""); // Start with an empty document
-
-        // 1. Insert "Hello" (length 5)
-        // to_add_buf now contains: "Hello"
-        pt.insert(0, b"Hello").unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"Hello");
-        // 2. Insert "World" (length 5)
-        // to_add_buf now contains: "HelloWorld"
-        pt.insert(5, b"World").unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"HelloWorld");
-        // 3. Undo "World"
-        pt.undo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"Hello");
-        // 4. Undo "Hello"
-        pt.undo().unwrap();
-        assert_eq!(pt.get_bytes_at(0, pt.len()).unwrap(), b"");
-        // 5. Redo the first action ("Hello")
-        // BUG REVEALED:
-        // Original code took `to_add_buf.len() - len`.
-        // to_add_buf is 10 bytes ("HelloWorld"). len is 5.
-        // It grabs bytes 5..10, which is "World", and inserts it at pos 0!
-        // The fixed code uses `range: 0..5` and correctly grabs "Hello".
-        pt.redo().unwrap();
-        assert_eq!(
-            pt.get_bytes_at(0, pt.len()).unwrap(),
-            b"Hello",
-            "Failed to redo 'Hello' correctly"
-        );
-        // 6. Redo the second action ("World")
-        pt.redo().unwrap();
-        assert_eq!(
-            pt.get_bytes_at(0, pt.len()).unwrap(),
-            b"HelloWorld",
-            "Failed to redo 'World' correctly"
-        );
-    }
-
     /// Helper function to create a dummy MmapFile with specific text
     fn create_mock_mmap(content: &[u8]) -> io::mmap::MmapFile {
         let mut temp = tempfile::NamedTempFile::new().unwrap();
@@ -802,13 +662,6 @@ mod piece_table_tests {
             0..9,
             "Collapsed piece range must perfectly match the new file size"
         );
-
-        // History checks
-        assert!(
-            pt.undo_stack.is_empty(),
-            "Undo stack must be cleared to prevent out-of-bounds panics"
-        );
-        assert!(pt.redo_stack.is_empty(), "Redo stack must be cleared");
     }
 
     #[test]
