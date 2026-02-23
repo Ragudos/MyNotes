@@ -384,7 +384,7 @@ impl LeafNode {
         {
             let line_len = self.line_lengths.len();
             remove_start = start.min(line_len);
-            remove_end = (end.add(1)).min(line_len);
+            remove_end = end.add(1).min(line_len);
         }
 
         if remove_start >= remove_end {
@@ -638,7 +638,7 @@ impl InternalNode {
 }
 
 #[cfg(test)]
-mod tests {
+mod btree_line_index_node_tests {
     use super::*;
     // Adjust these imports based on your actual crate structure
     use crate::enums::MathError;
