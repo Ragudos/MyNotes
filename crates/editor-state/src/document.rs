@@ -215,6 +215,23 @@ impl Document {
     }
 }
 
+impl Document {
+    #[inline]
+    pub fn get_line_count(&self) -> usize {
+        self.text_buffer.line_count()
+    }
+
+    #[inline]
+    pub fn get_line(&self, idx: usize) -> Option<String> {
+        self.text_buffer.get_line(idx)
+    }
+
+    #[inline]
+    pub fn get_line_stripped(&self, idx: usize) -> Option<String> {
+        self.text_buffer.get_line_stripped(idx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -8,3 +8,4 @@ license.workspace = true
 editor-core = { path = "../editor-core" }
 editor-state = { path = "../editor-state" }
 ui = { path = "../ui" }
+fltk = { workspace = true }

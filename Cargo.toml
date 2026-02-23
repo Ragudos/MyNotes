@@ -7,5 +7,5 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-fltk = { version = "1.5.22", default-features = false, features = ["fltk-bundled", "no-pango", "no-images"] }
+fltk = { version = "1.5.22" }
 tempfile = "3.25.0"
