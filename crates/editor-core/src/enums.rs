@@ -6,8 +6,15 @@ pub enum BufferKind {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditAction {
-    Insert { pos: u64, text: String },
-    Delete { pos: u64, text: String },
+    Insert {
+        pos: crate::cursor::Position,
+        text: String,
+    },
+    Delete {
+        pos: crate::cursor::Position,
+        end: crate::cursor::Position,
+        text: String,
+    },
 }
 
 #[derive(Debug, PartialEq)]
