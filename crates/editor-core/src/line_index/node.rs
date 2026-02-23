@@ -91,28 +91,36 @@ impl LeafNode {
 
     pub fn add_child(
         &mut self,
-        mut abs_byte_offset: u64,
+        abs_byte_offset: u64,
         bytes: &[u8],
     ) -> Result<Option<LeafNode>, crate::enums::MathError> {
         self.default_if_empty();
 
         let bytes_len = <usize as TryInto<u64>>::try_into(bytes.len())?;
-        let target_idx = self
-            .line_lengths
-            .iter()
-            .position(|&line_length| {
-                if abs_byte_offset <= line_length {
-                    return true;
-                }
+        // 1. Safely find the target line and the relative offset within that line
+        let mut relative_offset = abs_byte_offset;
+        let mut target_idx = 0;
 
-                abs_byte_offset.sub_assign(line_length);
+        for (i, &line_length) in self.line_lengths.iter().enumerate() {
+            if relative_offset < line_length {
+                target_idx = i;
+                break;
+            }
 
-                false
-            })
-            .unwrap_or(self.line_lengths.len().saturating_sub(1));
+            // If we are on the very last line, we MUST stop here to append,
+            // preventing the offset from subtracting and mutating to 0.
+            if i == self.line_lengths.len().saturating_sub(1) {
+                target_idx = i;
+                break;
+            }
+
+            // Only subtract if we are actually moving to the next line
+            relative_offset.sub_assign(line_length);
+        }
+
         let old_line_len = self.line_lengths[target_idx];
-        let line_prefix_len = abs_byte_offset;
-        let line_suffix_len = old_line_len.sub(abs_byte_offset);
+        let line_prefix_len = relative_offset;
+        let line_suffix_len = old_line_len.saturating_sub(relative_offset);
         let mut new_lines = Vec::new();
         let mut last_line_idx = 0u64;
 
@@ -1153,6 +1161,57 @@ mod btree_line_index_node_tests {
         assert_eq!(
             leaf.summary.line_count, 2,
             "Line count summary is incorrect"
+        );
+    }
+
+    #[test]
+    fn test_leaf_node_insert_newline_then_text() {
+        // 1. Arrange: Start with an empty document (1 line, 0 bytes)
+        let mut leaf = LeafNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 0,
+            },
+            line_lengths: vec![0],
+        };
+
+        // 2. Act & Assert Part 1: Insert '\n' at absolute offset 0
+        let res1 = leaf.add_child(0, b"\n");
+        assert!(res1.is_ok(), "Inserting newline failed");
+
+        // After inserting '\n', we should have two lines:
+        // Line 0 is "\n" (1 byte), Line 1 is empty (0 bytes)
+        assert_eq!(
+            leaf.line_lengths,
+            vec![1, 0],
+            "Failed to split into two lines after inserting \\n"
+        );
+        assert_eq!(leaf.summary.byte_len, 1);
+        assert_eq!(leaf.summary.line_count, 2);
+
+        // 3. Act & Assert Part 2: Insert 'Hello' at absolute offset 1
+        // This simulates typing "Hello" on the newly created second line.
+        let res2 = leaf.add_child(1, b"Hello");
+        assert!(
+            res2.is_ok(),
+            "Inserting text after newline failed (potential overflow!)"
+        );
+
+        // The text should cleanly append to the second line, NOT the first line.
+        assert_eq!(
+            leaf.line_lengths,
+            vec![1, 5],
+            "Bug caught: Text appended to the wrong line or caused an overflow!"
+        );
+
+        // Verify final summary totals
+        assert_eq!(
+            leaf.summary.byte_len, 6,
+            "Final byte length summary is incorrect"
+        );
+        assert_eq!(
+            leaf.summary.line_count, 2,
+            "Final line count summary is incorrect"
         );
     }
 }
