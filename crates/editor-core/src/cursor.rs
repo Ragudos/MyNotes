@@ -15,7 +15,7 @@ impl Position {
 
 /// Represents a cursor and its associated selection range.
 /// Uses the "Anchor and Head" directional selection model.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Cursor {
     /// The fixed starting point of a selection.
     pub anchor: Position,
