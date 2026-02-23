@@ -257,6 +257,19 @@ impl TextBuffer {
         self.piece_table.get_string(start_abs_idx, line_length).ok()
     }
 
+    pub fn get_line_stripped(&self, line_idx: usize) -> Option<String> {
+        let mut line = self.get_line(line_idx)?;
+
+        // Remove trailing \r\n or \n
+        if line.ends_with("\r\n") {
+            line.truncate(line.len() - 2);
+        } else if line.ends_with('\n') {
+            line.truncate(line.len() - 1);
+        }
+
+        Some(line)
+    }
+
     /// Returns the LineRangeIter to traverse the B-Tree for a specific range of lines.
     /// This is your hyper-fast path for rendering the visible viewport on screen.
     pub fn lines(
@@ -278,7 +291,6 @@ impl TextBuffer {
     pub fn point_to_abs_offset(&self, row: usize, col: usize) -> Option<u64> {
         // 1. Find where the line starts in the 1D byte stream
         let line_start_abs_idx = self.line_index.line_idx_to_abs_idx(row, false)?;
-
         // 2. Validate the column doesn't exceed the line's length for safety
         let line_len = self.line_index.get_line_length_at(row)?;
         let col_u64 = col as u64;
@@ -304,7 +316,6 @@ impl TextBuffer {
 
         // 2. Get the normalized 2D start and end coordinates (ensuring start <= end)
         let (start, end) = cursor.range();
-
         // 3. Convert the 2D coordinates into 1D absolute byte offsets
         let start_abs = self
             .point_to_abs_offset(start.row, start.col)
@@ -400,48 +411,29 @@ impl TextBuffer {
     pub fn delete_selection(
         &mut self,
         cursor: &crate::cursor::Cursor,
-    ) -> Result<crate::cursor::Position, crate::enums::MathError> {
+    ) -> crate::errors::TextBufferResult<(crate::cursor::Position, String)> {
         if cursor.no_selection() {
-            // Nothing deleted, cursor stays exactly where it is
-            return Ok(cursor.head);
+            return Ok((cursor.head, String::new()));
         }
 
-        let pos1 = cursor.start();
-        let pos2 = cursor.end();
+        // Use the helper we wrote earlier to grab the text before it's gone!
+        let deleted_text = self.get_cursor_selection(cursor)?;
 
-        // 1. Determine top-left and bottom-right in 2D space to ensure we
-        // process left-to-right, and know exactly where the cursor should end up.
-        let (top_left, bottom_right) =
-            if pos1.row < pos2.row || (pos1.row == pos2.row && pos1.col < pos2.col) {
-                (pos1, pos2)
-            } else {
-                (pos2, pos1)
-            };
+        let (top_left, bottom_right) = cursor.range();
 
-        // 2. Translate to absolute bytes
         let start_offset = self
             .point_to_abs_offset(top_left.row, top_left.col)
-            .ok_or(crate::enums::MathError::OutOfBounds(top_left.row))?;
+            .unwrap();
         let end_offset = self
             .point_to_abs_offset(bottom_right.row, bottom_right.col)
-            .ok_or(crate::enums::MathError::OutOfBounds(bottom_right.row))?;
+            .unwrap();
+        let length = end_offset - start_offset;
 
-        let length = end_offset
-            .checked_sub(start_offset)
-            .ok_or(crate::enums::MathError::Overflow)?;
-
-        if length == 0 {
-            return Ok(top_left);
-        }
-
-        // 3. Remove byte range from `self.piece_table` and update `self.line_index`.
         self.piece_table.delete(start_offset, length)?;
         self.line_index.remove(start_offset, length)?;
-
         self.is_dirty = true;
 
-        // The new position is ALWAYS the top-left of the deleted boundary!
-        Ok(top_left)
+        Ok((top_left, deleted_text.unwrap_or("".to_string())))
     }
 
     /// Simulates the Backspace key.
@@ -449,13 +441,13 @@ impl TextBuffer {
     pub fn backspace(
         &mut self,
         cursor: &crate::cursor::Cursor,
-    ) -> Result<crate::cursor::Position, crate::enums::MathError> {
+    ) -> crate::errors::TextBufferResult<(crate::cursor::Position, String)> {
         if !cursor.no_selection() {
             return self.delete_selection(cursor);
         }
 
         if cursor.head.row == 0 && cursor.head.col == 0 {
-            return Ok(cursor.head); // At the very beginning, nothing to backspace
+            return Ok((cursor.head, "".to_string())); // At the very beginning, nothing to backspace
         }
 
         let start_position = if cursor.head.col > 0 {
@@ -470,12 +462,10 @@ impl TextBuffer {
                 .row
                 .checked_sub(1)
                 .ok_or(crate::enums::MathError::OutOfBounds(0))?;
-
             let prev_row_len_u64 = self
                 .line_index
                 .get_line_length_at(prev_row)
                 .ok_or(crate::enums::MathError::OutOfBounds(prev_row))?;
-
             let safe_column = <u64 as TryInto<usize>>::try_into(prev_row_len_u64)
                 .map_err(|_| crate::enums::MathError::Overflow)?;
 
@@ -496,7 +486,7 @@ impl TextBuffer {
     pub fn delete_forward(
         &mut self,
         cursor: &crate::cursor::Cursor,
-    ) -> Result<crate::cursor::Position, crate::enums::MathError> {
+    ) -> crate::errors::TextBufferResult<(crate::cursor::Position, String)> {
         if !cursor.no_selection() {
             return self.delete_selection(cursor);
         }
@@ -505,15 +495,15 @@ impl TextBuffer {
             .line_index
             .get_line_length_at(cursor.head.row)
             .ok_or(crate::enums::MathError::OutOfBounds(cursor.head.row))?;
-
         let current_row_len = <u64 as TryInto<usize>>::try_into(current_row_len_u64)
             .map_err(|_| crate::enums::MathError::Overflow)?;
-
         let end_position = if cursor.head.col >= current_row_len.saturating_sub(1) {
             let total_rows = self.line_count(); // Assuming you have this implemented
+
             if cursor.head.row + 1 >= total_rows {
-                return Ok(cursor.head); // End of file, nothing to forward delete
+                return Ok((cursor.head, "".to_string())); // End of file, nothing to forward delete
             }
+
             crate::cursor::Position {
                 row: cursor.head.row + 1,
                 col: 0,
@@ -895,23 +885,66 @@ mod text_buffer_editing_tests {
     }
 
     #[test]
-    fn test_backspace_vs_delete_forward_positions() {
+    fn test_delete_selection_returns_text_and_pos() {
         let mut buffer = TextBuffer::new().unwrap();
-        // Buffer: "ABC"
-        buffer.insert(&Cursor::default(), "ABC").unwrap();
+        buffer.insert(&Cursor::default(), "Delete Me").unwrap();
 
-        // 1. Backspace from the end
-        let end_cursor = Cursor::new(0, 3);
-        let pos_after_backspace = buffer.backspace(&end_cursor).unwrap();
-        // Position should move left
-        assert_eq!(pos_after_backspace, Position::new(0, 2));
+        // Select "Delete"
+        let cursor = Cursor::new_selection(Position::new(0, 0), Position::new(0, 6));
 
-        // 2. Delete forward from the middle
-        // Buffer is now "AB", cursor at (0,2). Move it to (0,1) to delete 'B'
-        let mid_cursor = Cursor::new(0, 1);
-        let pos_after_delete = buffer.delete_forward(&mid_cursor).unwrap();
-        // Position should STAY at (0,1) because the character in front was removed
-        assert_eq!(pos_after_delete, Position::new(0, 1));
+        let (new_pos, deleted_text) = buffer.delete_selection(&cursor).unwrap();
+
+        // 1. Check if the returned text is correct
+        assert_eq!(deleted_text, "Delete");
+
+        // 2. Check if the cursor collapsed to the start
+        assert_eq!(new_pos, Position::new(0, 0));
+
+        // 3. Check buffer state
+        assert_eq!(buffer.get_line(0), Some(" Me".to_string()));
+    }
+
+    #[test]
+    fn test_backspace_returns_deleted_char() {
+        let mut buffer = TextBuffer::new().unwrap();
+        buffer.insert(&Cursor::default(), "Rust").unwrap();
+
+        // Cursor is at the end "Rust|"
+        let cursor = Cursor::new(0, 4);
+        let (new_pos, deleted_text) = buffer.backspace(&cursor).unwrap();
+
+        assert_eq!(deleted_text, "t");
+        assert_eq!(new_pos, Position::new(0, 3));
+        assert_eq!(buffer.get_line(0), Some("Rus".to_string()));
+    }
+
+    #[test]
+    fn test_delete_forward_across_lines() {
+        let mut buffer = TextBuffer::new().unwrap();
+        buffer.insert(&Cursor::default(), "A\nB").unwrap();
+
+        // Cursor is at "A|\nB" (row 0, col 1)
+        let cursor = Cursor::new(0, 1);
+        let (new_pos, deleted_text) = buffer.delete_forward(&cursor).unwrap();
+
+        // It should have deleted the newline character
+        assert_eq!(deleted_text, "\n");
+
+        // Position should stay at (0, 1) but the text "B" is pulled up
+        assert_eq!(new_pos, Position::new(0, 1));
+        assert_eq!(buffer.get_line(0), Some("AB".to_string()));
+    }
+
+    #[test]
+    fn test_empty_delete_selection() {
+        let mut buffer = TextBuffer::new().unwrap();
+        buffer.insert(&Cursor::default(), "Safe").unwrap();
+
+        let cursor = Cursor::new(0, 2); // No selection
+        let (new_pos, deleted_text) = buffer.delete_selection(&cursor).unwrap();
+
+        assert_eq!(deleted_text, "");
+        assert_eq!(new_pos, Position::new(0, 2));
     }
 
     #[test]
