@@ -488,7 +488,21 @@ impl PieceTable {
     }
 
     pub fn get_string(&self, pos: u64, len: u64) -> Result<String, crate::enums::MathError> {
-        Ok(String::from_utf8_lossy(&self.get_bytes_at(pos, len)?).into_owned())
+        let bytes_vec = self.get_bytes_at(pos, len)?;
+
+        // String::from_utf8 takes ownership of the Vec<u8>
+        match String::from_utf8(bytes_vec) {
+            // SUCCESS: Zero new allocations! It just relabels the Vec as a String.
+            Ok(valid_string) => Ok(valid_string),
+
+            // ERROR: Only here do we pay the penalty of allocating a new string
+            // to replace the broken characters.
+            Err(err) => {
+                // err.into_bytes() gives us back the original vector if we need it,
+                // but here we just pass the slice to lossy.
+                Ok(String::from_utf8_lossy(err.as_bytes()).into_owned())
+            }
+        }
     }
 
     /// Returns an iterator that yields sequential zero-copy byte slices
