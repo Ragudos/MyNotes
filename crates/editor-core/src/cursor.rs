@@ -27,6 +27,74 @@ pub struct Cursor {
 }
 
 impl Cursor {
+    // Helper to finalize movement (same as before)
+    fn apply_movement(&mut self, new_head: Position, shift: bool, update_preferred: bool) {
+        if !shift {
+            self.anchor = new_head;
+        }
+        self.head = new_head;
+        if update_preferred {
+            self.preferred_column = Some(new_head.col);
+        }
+    }
+
+    pub fn move_to(&mut self, pos: Position, shift: bool) {
+        self.apply_movement(pos, shift, true);
+    }
+
+    /// Moves left. Needs the length of the previous line in case it wraps upward.
+    pub fn move_left(&mut self, prev_line_len: usize, shift: bool) {
+        let mut new_pos = self.head;
+
+        if new_pos.col > 0 {
+            new_pos.col -= 1;
+        } else if new_pos.row > 0 {
+            new_pos.row -= 1;
+            new_pos.col = prev_line_len; // Wrap to end of previous line
+        }
+
+        self.apply_movement(new_pos, shift, true);
+    }
+
+    /// Moves right. Needs current line length to know when to wrap,
+    /// and a boolean to know if wrapping to a new line is allowed.
+    pub fn move_right(&mut self, current_line_len: usize, is_last_line: bool, shift: bool) {
+        let mut new_pos = self.head;
+        if new_pos.col < current_line_len {
+            new_pos.col += 1;
+        } else if !is_last_line {
+            new_pos.row += 1;
+            new_pos.col = 0; // Wrap to start of next line
+        }
+        self.apply_movement(new_pos, shift, true);
+    }
+
+    /// Moves up. Needs the length of the target line above it to clamp the column.
+    pub fn move_up(&mut self, target_line_len: usize, shift: bool) {
+        if self.head.row > 0 {
+            let mut new_pos = self.head;
+            new_pos.row -= 1;
+            let pref = self.preferred_column.unwrap_or(new_pos.col);
+            new_pos.col = pref.min(target_line_len);
+
+            self.apply_movement(new_pos, shift, false);
+        }
+    }
+
+    /// Moves down. Needs the length of the target line below it to clamp the column.
+    pub fn move_down(&mut self, target_line_len: usize, is_last_line: bool, shift: bool) {
+        if !is_last_line {
+            let mut new_pos = self.head;
+            new_pos.row += 1;
+            let pref = self.preferred_column.unwrap_or(new_pos.col);
+            new_pos.col = pref.min(target_line_len);
+
+            self.apply_movement(new_pos, shift, false);
+        }
+    }
+}
+
+impl Cursor {
     #[must_use]
     pub fn new(row: usize, column: usize) -> Self {
         let pos = Position::new(row, column);
@@ -78,6 +146,17 @@ impl Cursor {
             (self.anchor, self.head)
         } else {
             (self.head, self.anchor)
+        }
+    }
+
+    /// Returns the normalized tuple (start, end) regardless of selection direction.
+    #[inline]
+    #[must_use]
+    pub fn range_mut(&mut self) -> (&mut Position, &mut Position) {
+        if self.anchor <= self.head {
+            (&mut self.anchor, &mut self.head)
+        } else {
+            (&mut self.head, &mut self.anchor)
         }
     }
 
