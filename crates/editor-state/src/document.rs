@@ -230,6 +230,13 @@ impl Document {
     pub fn get_line_stripped(&self, idx: usize) -> Option<String> {
         self.text_buffer.get_line_stripped(idx)
     }
+
+    pub fn open_file<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> editor_core::errors::TextBufferResult<()> {
+        self.text_buffer.open_from(path)
+    }
 }
 
 #[cfg(test)]

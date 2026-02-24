@@ -117,6 +117,36 @@ impl TextBuffer {
         })
     }
 
+    pub fn open_from<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> crate::errors::TextBufferResult<()> {
+        let path_buf = path.as_ref().to_path_buf();
+        // 1. Load MmapFile.
+        // The OS sets up the page tables but doesn't read the whole file into RAM yet.
+        let mmap_file = io::mmap::MmapFile::open(&path_buf)?;
+        // 3. Scan the MmapFile slice to build the BTreeLineIndex.
+        // We do this BEFORE transferring ownership of the mmap_file to the PieceTable.
+        // The slice borrow is immediately dropped when `BTreeLineIndex::new` returns.
+        // (Assuming `new` returns a Result, if not, remove the `?`).
+        let line_index = crate::line_index::btree::BTreeLineIndex::new(mmap_file.as_slice())?;
+        // 2. Initialize PieceTable with the MmapFile.
+        // This moves `mmap_file` into the PieceTable, where it will live as read-only backing storage.
+        let piece_table = crate::piece_table::table::PieceTable::new(mmap_file)?;
+
+        self.piece_table = piece_table;
+        self.line_index = line_index;
+        self.filepath = Some(path_buf);
+        self._temp_backing = None;
+
+        // 4. (Optional but recommended) Spawn the `notify` file watcher here.
+        // Note: Architecturally, it is better to have `editor-state` handle `notify`
+        // so it can route the filesystem events into your main UI event loop.
+        // We leave this un-implemented in `editor-core`.
+
+        Ok(())
+    }
+
     /// Safely flushes the evaluated state of the buffer to disk.
     ///
     /// # Errors
