@@ -30,6 +30,8 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [x] Selection while scrolling
     - [x] Saving to a file
     - [x] Saving to an existing file (modifying it)
+    - [ ] Open 1GB or very large file/s (hardest :p) without crashing and using as very low memory as possible
+    - [ ] Edit 1GB or very large file/s without crashing and using as very low memory as possible
 
 ## NOTES
 
