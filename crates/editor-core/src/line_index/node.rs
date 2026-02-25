@@ -229,22 +229,26 @@ impl InternalNode {
         mut abs_byte_offset: u64,
         bytes: &[u8],
     ) -> Result<Option<InternalNode>, crate::enums::MathError> {
+        let num_children = self.children.len();
+
         for (idx, child) in self.children.iter_mut().enumerate() {
             let child_byte_len = child.summary().byte_len;
 
-            if abs_byte_offset <= child_byte_len
-                && let Some(new_node) = child.add_child(abs_byte_offset, bytes)?
-            {
-                self.children.insert(idx + 1, new_node);
+            if abs_byte_offset < child_byte_len || idx == num_children - 1 {
+                if let Some(new_node) =
+                    child.add_child(abs_byte_offset.min(child_byte_len), bytes)?
+                {
+                    self.children.insert(idx + 1, new_node);
+                }
+
                 break;
             }
 
             abs_byte_offset.sub_assign(child_byte_len);
         }
 
-        self.summary
-            .byte_len
-            .add_assign(<usize as TryInto<u64>>::try_into(bytes.len())?);
+        // Recalculate directly from children to guarantee 100% accuracy
+        self.summary.byte_len = self.children.iter().map(|c| c.summary().byte_len).sum();
         self.summary.line_count = self.children.iter().map(|c| c.summary().line_count).sum();
 
         Ok(self.split_if_needed())
@@ -1212,6 +1216,86 @@ mod btree_line_index_node_tests {
         assert_eq!(
             leaf.summary.line_count, 2,
             "Final line count summary is incorrect"
+        );
+    }
+
+    #[test]
+    fn test_internal_node_no_split_underflow() {
+        // 1. Arrange: A leaf node with 10 bytes.
+        let leaf = LeafNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 10,
+            },
+            line_lengths: vec![10],
+        };
+
+        let mut internal = InternalNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 10,
+            },
+            // Adjust `Node::Leaf` to whatever enum wraps your children
+            children: vec![Node::Leaf(leaf)],
+        };
+
+        // 2. Act: Insert 5 bytes right in the middle (offset 5).
+        // In the old code, this returned Ok(None), skipped the `break`,
+        // and panicked on `abs_byte_offset.sub_assign(10)` because 5 < 10.
+        let result = internal.add_child(5, b"hello");
+
+        // 3. Assert: Must succeed and NOT panic.
+        assert!(
+            result.is_ok(),
+            "Bug caught: Internal node panicked on non-splitting insert!"
+        );
+
+        // Ensure the summary updated correctly
+        assert_eq!(
+            internal.summary.byte_len, 15,
+            "Internal node byte_len summary did not update correctly"
+        );
+    }
+
+    #[test]
+    fn test_internal_node_out_of_bounds_clamp_and_resync() {
+        // 1. Arrange: A leaf node with exactly 10 bytes.
+        let leaf = LeafNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                byte_len: 10,
+            },
+            line_lengths: vec![10],
+        };
+
+        let mut internal = InternalNode {
+            summary: crate::line_index::line_summary::LineSummary {
+                line_count: 1,
+                // SIMULATED DESYNC: Parent thinks it has 15 bytes,
+                // but the child actually only has 10.
+                byte_len: 15,
+            },
+            children: vec![Node::Leaf(leaf)],
+        };
+
+        // 2. Act: Try to insert at offset 15.
+        // - Oldest code: Silently dropped the data (loop finishes, nothing happens).
+        // - Band-aid code: Forced offset 15 into the leaf, causing a bounds panic inside the leaf.
+        // - Fixed code: Clamps the offset to 10 (the child's actual max), safely appending.
+        let result = internal.add_child(15, b"world");
+
+        // 3. Assert: Must not panic.
+        assert!(
+            result.is_ok(),
+            "Bug caught: Failed or panicked on out-of-bounds append!"
+        );
+
+        // 4. Verify Resync: The internal node MUST fix its own summary dynamically.
+        // It should be 10 (actual child bytes) + 5 (new bytes) = 15.
+        // If it used `add_assign`, it would wrongly become 15 + 5 = 20.
+        assert_eq!(
+            internal.summary.byte_len, 15,
+            "Bug caught: Internal node did not fix its desynced summary using .sum()"
         );
     }
 }
