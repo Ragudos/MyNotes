@@ -2,9 +2,9 @@ name: Rust CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -64,7 +64,7 @@ jobs:
         run: |
           sudo apt-get update
           # Uncomment and modify the below line based on your UI/Renderer backend (e.g., winit dependencies)
-          sudo apt-get install -y cmake libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
+          sudo apt-get install -y libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
 
       - name: Build Workspace
         # Builds app, editor-core, editor-state, io, layout, renderer, ui, util

@@ -10,6 +10,8 @@ identifier = "com.mynotes.app"
 product-name = "MyNotes"
 formats = ["all"]
 out-dir = "../../target/release/installers"
+before-packaging-command = "cargo build -p app --release"
+icons = ["icons/icon.png", "icons/icon.ico", "icons/icon.icns]
 
 [dependencies]
 editor-core = { path = "../editor-core" }
