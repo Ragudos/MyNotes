@@ -604,13 +604,11 @@ impl Controller {
     }
 
     pub fn on_copy(
-        c: &mut fltk::widget::Widget,
+        _c: &mut fltk::widget::Widget,
         be: &mut State,
-        sb: &mut fltk::valuator::Scrollbar,
-        lh: i32,
+        _sb: &mut fltk::valuator::Scrollbar,
+        _lh: i32,
     ) -> bool {
-        let ctrl = fltk::app::event_state().contains(fltk::enums::EventState::Ctrl);
-        let text = fltk::app::event_text();
         let d = be.doc.borrow();
         let selected = d.get_selected_text();
 
@@ -626,10 +624,10 @@ impl Controller {
     }
 
     pub fn on_cut(
-        c: &mut fltk::widget::Widget,
+        _c: &mut fltk::widget::Widget,
         be: &mut State,
-        sb: &mut fltk::valuator::Scrollbar,
-        lh: i32,
+        _sb: &mut fltk::valuator::Scrollbar,
+        _lh: i32,
     ) -> bool {
         // ---- 1. READ selection (immutable borrow) ----
         let mut d = be.doc.borrow_mut();
