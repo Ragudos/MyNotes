@@ -12,10 +12,24 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [x] Cursor with anchor and head
     - [x] History API to undo and redo
     - [x] Document to hold all state together as one public-facing API    
-    - [ ] Simple UI for opening file chooser
-    - [ ] Cursor with selection in mind
-    - [ ] Viewport with scrolling
-    - [ ] Render opened text file onto viewport
+    - [x] Simple UI for opening file chooser
+    - [x] Cursor with selection in mind
+    - [x] Viewport with scrolling
+    - [x] Render opened text file onto viewport
+    - [x] Deletion of selection
+    - [x] Cursor following viewport (scrolloff) when scrolling like in NeoVim
+    - [x] line numbers
+    - [] Configurable Menu for preferences (with line number, cursor type, etc.)
+    - [x] arrow keys to navigate texts
+    - [] double clicking selects a word, then a line, then a paragraph.
+    - [x] Tests for core data structures
+    - [] Tests for UI
+    - [] Decouple reusable logic used into `crates/utils`
+    - [] Decouple all IO operations in `crates/io`
+    - [] Select all (`Ctrl` + `a`)
+    - [] Selection while scrolling
+    - [x] Saving to a file
+    - [x] Saving to an existing file (modifying it)
 
 ## NOTES
 
