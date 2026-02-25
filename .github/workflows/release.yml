@@ -50,7 +50,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # This grabs the output directory we defined in your crates/app/Cargo.toml
-          files: target/release/installers/**/*
+          files: |
+            target/release/installers/*.dmg
+            target/release/installers/*.exe
+            target/release/installers/*.msi
+            target/release/installers/*.deb
+            target/release/installers/*.AppImage
+            target/release/installers/*.tar.gz
           draft: true # Creates a draft release so you can edit the patch notes before publishing
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
