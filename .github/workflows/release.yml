@@ -39,6 +39,9 @@ jobs:
         with:
           tool: cargo-packager
 
+      - name: Build Executable
+        run: cargo build -p app --release
+
       - name: Build and Package Application
         # Because you are in a workspace, we use `-p app` to target your executable crate
         run: cargo packager -p app --release
