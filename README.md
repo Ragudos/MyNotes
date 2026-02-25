@@ -19,7 +19,6 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [x] Deletion of selection
     - [x] Cursor following viewport (scrolloff) when scrolling like in NeoVim
     - [x] line numbers
-    - [ ] Configurable Menu for preferences (with line number, cursor type, etc.)
     - [x] arrow keys to navigate texts
     - [ ] double clicking selects a word, then a line, then a paragraph.
     - [x] Tests for core data structures
@@ -27,7 +26,8 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [ ] Decouple reusable logic used into `crates/utils`
     - [ ] Decouple all IO operations in `crates/io`
     - [ ] Select all (`Ctrl` + `a`)
-    - [ ] Selection while scrolling
+    - [ ] Save through  `Ctrl` + `s`
+    - [x] Selection while scrolling
     - [x] Saving to a file
     - [x] Saving to an existing file (modifying it)
 
@@ -36,7 +36,7 @@ An extremely lightweight and fast text editor that uses as little memory as poss
 For this current development iteration, this project
 only aims to handle ASCII characters.
 
-After having a MVP, it will move on to support UTF-8 characters.
+After having a MVP, it will move on to support UTF-8/Unicode characters.
 
 Then, after that, new features and improvements to UI, etc.
 
