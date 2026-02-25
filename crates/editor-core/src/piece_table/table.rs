@@ -253,82 +253,82 @@ impl PieceTable {
         while len > 0 && idx < pieces_len {
             let piece = self.pieces[idx].clone();
             #[allow(clippy::similar_names)]
-            let piece_len = self.pieces[idx].len();
+            let piece_len = piece.len(); // minor tweak: just use piece.len()
+
+            // Relative offsets within the piece
             let delete_start = offset;
             let delete_end = (offset + len).min(piece_len);
             let remove_len = delete_end - delete_start;
 
-            if delete_start == 0 && delete_end == piece_len {
-                // Full delete: just drop the piece
-                removed.push(self.pieces[idx].clone());
-                self.pieces.remove(idx);
+            if remove_len == 0 {
+                idx.add_assign(1);
+                offset = 0;
 
+                continue;
+            }
+
+            // Absolute indices within the underlying buffer
+            let absolute_delete_start = piece.range.start + delete_start;
+            let absolute_delete_end = piece.range.start + delete_end;
+
+            if delete_start == 0 && delete_end == piece_len {
+                // Full delete
+                removed.push(piece);
+                self.pieces.remove(idx);
                 pieces_len.sub_assign(1);
             } else if delete_start == 0 {
-                // Delete start: shrink the piece from the left
+                // Delete start: shrink from the left
                 removed.push(crate::piece_table::piece::Piece {
                     buf_kind: piece.buf_kind,
-                    range: piece.range.start..piece.range.start + remove_len,
+                    range: piece.range.start..absolute_delete_end,
                 });
 
                 self.pieces
                     .get_mut(idx)
                     .expect("idx is already being checked")
                     .range
-                    .start
-                    .add_assign(remove_len);
-
-                // Don't increment idx here because the current piece shifted left
+                    .start = absolute_delete_end;
             } else if delete_end == piece_len {
-                // Delete end: shrink the piece from the right
-                let new_start = piece
-                    .range
-                    .end
-                    .checked_sub(piece.range.end - remove_len)
-                    .ok_or(crate::enums::MathError::Overflow)?;
-
+                // Delete end: shrink from the right
                 removed.push(crate::piece_table::piece::Piece {
                     buf_kind: piece.buf_kind,
-                    range: new_start..piece.range.end,
+                    range: absolute_delete_start..piece.range.end,
                 });
+
                 self.pieces
                     .get_mut(idx)
                     .expect("idx is already being checked")
                     .range
-                    .end
-                    .sub_assign(remove_len);
+                    .end = absolute_delete_start;
+
                 idx.add_assign(1);
             } else {
-                let new_start_removed = piece
-                    .range
-                    .start
-                    .checked_add(delete_start)
-                    .ok_or(crate::enums::MathError::Overflow)?;
-
+                // Middle delete: split the piece
                 removed.push(crate::piece_table::piece::Piece {
                     buf_kind: piece.buf_kind,
-                    range: new_start_removed..delete_end,
+                    range: absolute_delete_start..absolute_delete_end,
                 });
+
                 self.pieces.splice(
                     idx..=idx,
                     [
                         crate::piece_table::piece::Piece {
                             buf_kind: piece.buf_kind,
-                            range: piece.range.start..delete_start,
+                            range: piece.range.start..absolute_delete_start,
                         },
                         crate::piece_table::piece::Piece {
                             buf_kind: piece.buf_kind,
-                            range: delete_end..piece.range.end,
+                            range: absolute_delete_end..piece.range.end,
                         },
                     ],
                 );
 
-                pieces_len.sub_assign(1);
+                pieces_len.add_assign(1); // We added a piece, so length increases
                 idx.add_assign(1); // Move past the 'left' piece we just kept
             }
 
             len.sub_assign(remove_len);
-            offset = 0;
+            offset = 0; // Next piece will be deleted from its start
         }
 
         Ok(removed)
@@ -748,6 +748,198 @@ mod piece_table_tests {
         assert_eq!(
             slice, b"Z12",
             "Original buffer slicing failed: likely passed 'end' as 'length"
+        );
+    }
+
+    #[test]
+    fn test_delete_middle_split() {
+        let mut pt = pt_from_str("Hello World");
+
+        // Delete "o W" (pos: 4, len: 3)
+        // Expected to split "Hello World" into "Hell" and "orld"
+        let removed = pt.delete(4, 3).expect("Failed to delete from middle");
+
+        let bytes = pt
+            .get_bytes_at(0, 8)
+            .expect("Failed to fetch bytes after middle split");
+
+        assert_eq!(
+            bytes, b"Hellorld",
+            "Middle split failed: resulting text buffer is incorrect"
+        );
+
+        assert_eq!(
+            pt.pieces.len(),
+            2,
+            "Middle split failed: should result in exactly 2 pieces"
+        );
+        assert_eq!(
+            pt.pieces[0].range,
+            0..4,
+            "Middle split failed: left piece range is incorrect"
+        );
+        assert_eq!(
+            pt.pieces[1].range,
+            7..11,
+            "Middle split failed: right piece range is incorrect"
+        );
+
+        assert_eq!(
+            removed.len(),
+            1,
+            "Middle split failed: should return exactly 1 removed piece fragment"
+        );
+        assert_eq!(
+            removed[0].range,
+            4..7,
+            "Middle split failed: removed piece range is incorrect"
+        );
+    }
+
+    #[test]
+    fn test_delete_start_shrink() {
+        let mut pt = pt_from_str("Hello World");
+
+        // Delete "Hello " (pos: 0, len: 6)
+        let removed = pt.delete(0, 6).expect("Failed to delete from start");
+
+        let bytes = pt
+            .get_bytes_at(0, 5)
+            .expect("Failed to fetch bytes after start shrink");
+
+        assert_eq!(
+            bytes, b"World",
+            "Start shrink failed: resulting text buffer is incorrect"
+        );
+
+        assert_eq!(
+            pt.pieces.len(),
+            1,
+            "Start shrink failed: should still only have 1 piece"
+        );
+        assert_eq!(
+            pt.pieces[0].range,
+            6..11,
+            "Start shrink failed: piece start range was not shifted correctly"
+        );
+
+        assert_eq!(
+            removed.len(),
+            1,
+            "Start shrink failed: should return exactly 1 removed piece fragment"
+        );
+        assert_eq!(
+            removed[0].range,
+            0..6,
+            "Start shrink failed: removed piece range is incorrect"
+        );
+    }
+
+    #[test]
+    fn test_delete_end_shrink() {
+        let mut pt = pt_from_str("Hello World");
+
+        // Delete " World" (pos: 5, len: 6)
+        let removed = pt.delete(5, 6).expect("Failed to delete from end");
+
+        let bytes = pt
+            .get_bytes_at(0, 5)
+            .expect("Failed to fetch bytes after end shrink");
+
+        assert_eq!(
+            bytes, b"Hello",
+            "End shrink failed: resulting text buffer is incorrect"
+        );
+
+        assert_eq!(
+            pt.pieces.len(),
+            1,
+            "End shrink failed: should still only have 1 piece"
+        );
+        assert_eq!(
+            pt.pieces[0].range,
+            0..5,
+            "End shrink failed: piece end range was not shifted correctly"
+        );
+
+        assert_eq!(
+            removed.len(),
+            1,
+            "End shrink failed: should return exactly 1 removed piece fragment"
+        );
+        assert_eq!(
+            removed[0].range,
+            5..11,
+            "End shrink failed: removed piece range is incorrect"
+        );
+    }
+
+    #[test]
+    fn test_delete_full_piece() {
+        let mut pt = pt_from_str("Hello");
+        pt.insert(5, b" World")
+            .expect("Failed to insert second piece");
+
+        // Delete " World" entirely (pos: 5, len: 6)
+        let removed = pt.delete(5, 6).expect("Failed to fully delete piece");
+
+        let bytes = pt
+            .get_bytes_at(0, 5)
+            .expect("Failed to fetch bytes after full piece delete");
+
+        assert_eq!(
+            bytes, b"Hello",
+            "Full delete failed: resulting text buffer is incorrect"
+        );
+
+        assert_eq!(
+            pt.pieces.len(),
+            1,
+            "Full delete failed: second piece was not dropped from the table"
+        );
+
+        assert_eq!(
+            removed.len(),
+            1,
+            "Full delete failed: should return exactly 1 removed piece fragment"
+        );
+    }
+
+    #[test]
+    fn test_delete_across_multiple_pieces() {
+        // Insert backwards at pos 0 to outsmart the `merge_or_continue` optimization
+        // and guarantee we actually have 3 distinct pieces in the table.
+        let mut pt = pt_from_str("");
+        pt.insert(0, b"Three").expect("Failed to insert piece 3");
+        pt.insert(0, b"Two ").expect("Failed to insert piece 2");
+        pt.insert(0, b"One ").expect("Failed to insert piece 1");
+
+        // Text is now "One Two Three".
+        // Delete "e Two Th" (pos: 2, len: 8)
+        let removed = pt
+            .delete(2, 8)
+            .expect("Failed to delete across multiple pieces");
+
+        let bytes = pt
+            .get_bytes_at(0, 5)
+            .expect("Failed to fetch bytes after multi-piece delete");
+
+        assert_eq!(
+            bytes, b"Onree",
+            "Multi-piece delete failed: resulting text buffer is incorrect"
+        );
+
+        assert_eq!(
+            pt.pieces.len(),
+            2,
+            "Multi-piece delete failed: should have exactly 2 pieces remaining"
+        );
+
+        // Now this will correctly assert 3, because we forced 3 distinct pieces!
+        assert_eq!(
+            removed.len(),
+            3,
+            "Multi-piece delete failed: should have collected fragments from all 3 affected pieces"
         );
     }
 }
