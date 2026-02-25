@@ -273,7 +273,7 @@ impl Renderer {
                     y,
                     Self::MARGIN_W - 5,
                     line_h,
-                    fltk::enums::Align::RightTop,
+                    fltk::enums::Align::Right | fltk::enums::Align::Inside,
                 );
                 fltk::draw::set_draw_color(fltk::enums::Color::White);
                 fltk::draw::draw_text2(
@@ -367,7 +367,6 @@ impl Controller {
             fltk::enums::Event::Drag => Self::on_drag(c, &mut st.borrow_mut(), &mut handle_sb, lh),
             fltk::enums::Event::Shortcut => {
                 let event_key = fltk::app::event_key();
-                println!("{:#?}", event_key);
 
                 if event_key == fltk::enums::Key::from_char('v') {
                     fltk::app::paste(c);
@@ -375,6 +374,7 @@ impl Controller {
                     return Self::on_copy(c, &mut st.borrow_mut(), &mut handle_sb, lh);
                 } else if event_key == fltk::enums::Key::from_char('x') {
                     return Self::on_cut(c, &mut st.borrow_mut(), &mut handle_sb, lh);
+                } else if event_key == fltk::enums::Key::from_char('a') {
                 }
 
                 true
@@ -566,8 +566,6 @@ impl Controller {
         if !handled {
             let text = fltk::app::event_text();
             if !text.is_empty() && !text.chars().any(|c| c.is_control()) {
-                println!("Typed: {}", text); // TODO: Insert text
-
                 let mut d = be.doc.borrow_mut();
 
                 d.insert(&text);
@@ -589,9 +587,6 @@ impl Controller {
         lh: i32,
     ) -> bool {
         let text = fltk::app::event_text();
-        println!("Pasted: {}", text);
-
-        println!("Pasted: {}", text);
 
         if text.is_empty() {
             return false;
