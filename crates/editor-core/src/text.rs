@@ -237,6 +237,9 @@ impl TextBuffer {
 
         // Ensure all bytes are physically flushed to the disk drive controller.
         temp_save_file.as_file().sync_all()?;
+
+        self.piece_table.release_mmap(); // Drop the MmapFile to release any locks on the original file (especially important on Windows)
+
         // 3. Atomically rename the temp file to `self.filepath`.
         // `persist` moves the file to the target path. We map its specific PersistError
         // back into a standard io::Error so it easily converts into TextBufferResult.

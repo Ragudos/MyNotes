@@ -11,6 +11,5 @@ publish = false
 license-file = "LICENSE"
 
 [workspace.dependencies]
-fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
+fltk = { version = "1.5.22", features = ["fltk-bundled", "no-images", "no-pango"] }
 tempfile = "3.25.0"
-

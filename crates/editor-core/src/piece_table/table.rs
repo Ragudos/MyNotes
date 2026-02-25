@@ -440,6 +440,10 @@ impl PieceTable {
 */
 
 impl PieceTable {
+    pub fn release_mmap(&mut self) {
+        self.original.close();
+    }
+
     /// Resets the piece table state after a successful save.
     ///
     /// This swaps out the backing memory-mapped file, clears the append buffer,
@@ -449,6 +453,7 @@ impl PieceTable {
         // We cast the usize length to u64 to match your Piece range fields.
         let file_size = <usize as TryInto<u64>>::try_into(new_mmap.len()).expect("");
 
+        self.original.close();
         // 2. Swap the old memory-mapped file with the new one.
         // The old mmap drops here, cleanly unmapping it from the OS.
         self.original = new_mmap;
