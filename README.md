@@ -27,7 +27,6 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [ ] Decouple all IO operations in `crates/io`
     - [ ] Select all (`Ctrl` + `a`)
     - [ ] Save through  `Ctrl` + `s`
-    - [ ] Render tabs properly
     - [x] Selection while scrolling
     - [x] Saving to a file
     - [x] Saving to an existing file (modifying it)
@@ -37,7 +36,8 @@ An extremely lightweight and fast text editor that uses as little memory as poss
 For this current development iteration, this project
 only aims to handle ASCII characters.
 
-After having a MVP, it will move on to support UTF-8/Unicode characters.
+After having a MVP, it will move on to support UTF-8/Unicode characters
+and tab rendering, find and replace, status bar, etc..
 
 Then, after that, new features and improvements to UI, etc.
 
