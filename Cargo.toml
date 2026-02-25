@@ -1,18 +1,16 @@
-[package]
-name = "MyNotes"
-version = "0.0.1"
-readme = "README.md"
-publish = false
-license-file = "LICENSE"
-
 [workspace]
 resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
+version = "0.0.1"
 edition = "2024"
 license = "MIT"
+readme = "README.md"
+publish = false
+license-file = "LICENSE"
 
 [workspace.dependencies]
 fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
 tempfile = "3.25.0"
+

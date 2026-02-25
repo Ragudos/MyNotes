@@ -10,7 +10,7 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "app"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "editor-core",
  "editor-state",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "editor-state"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "editor-core",
 ]
@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "io"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "memmap2",
 ]
@@ -211,12 +211,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "layout"
-version = "0.1.0"
-dependencies = [
- "editor-core",
- "editor-state",
- "fltk",
-]
+version = "0.0.1"
 
 [[package]]
 name = "leb128fmt"
@@ -308,11 +303,7 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 
 [[package]]
 name = "renderer"
-version = "0.1.0"
-dependencies = [
- "fltk",
- "layout",
-]
+version = "0.0.1"
 
 [[package]]
 name = "rustix"
@@ -413,12 +404,10 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "ui"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "editor-state",
  "fltk",
- "layout",
- "renderer",
 ]
 
 [[package]]
@@ -435,10 +424,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
 name = "util"
-version = "0.1.0"
-dependencies = [
- "crossbeam-channel",
-]
+version = "0.0.1"
 
 [[package]]
 name = "wasip2"

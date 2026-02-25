@@ -1,14 +1,16 @@
-name: Rust Release Build
+name: Publish Release
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*' # Triggers when you push a tag like 'v1.0.0'
+
+permissions:
+  contents: write # Required to create the GitHub Release and upload files
 
 jobs:
-  build:
-    name: Build Release Binaries
+  publish:
+    name: Package and Release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -18,11 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Linux dependencies (FLTK)
+      - name: Install Linux dependencies (FLTK & Packaging)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
+          sudo apt-get install -y libx11-dev libxext-dev libxft-dev libxinerama-dev libxcursor-dev libxrender-dev libxfixes-dev libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev fakeroot dpkg rpm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -32,20 +34,20 @@ jobs:
         with:
           key: ${{ runner.os }}
 
-      - name: Build release
-        run: cargo build --release
-
-      # Note: Replace 'your_app_name' with your actual crate name from Cargo.toml
-      - name: Upload release binaries (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+      - name: Install cargo-packager
+        uses: taiki-e/install-action@v2
         with:
-          name: release-${{ runner.os }}
-          path: target/release/your_app_name
+          tool: cargo-packager
 
-      - name: Upload release binaries (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+      - name: Build and Package Application
+        # Because you are in a workspace, we use `-p app` to target your executable crate
+        run: cargo packager -p app --release
+
+      - name: Upload Installers to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: release-${{ runner.os }}
-          path: target/release/MyNotes.exe
+          # This grabs the output directory we defined in your crates/app/Cargo.toml
+          files: target/release/installers/**/*
+          draft: true # Creates a draft release so you can edit the patch notes before publishing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

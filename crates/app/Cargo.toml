@@ -1,8 +1,15 @@
 [package]
 name = "app"
-version = "0.1.0"
-edition.workspace = true
+version.workspace = true
 license.workspace = true
+edition.workspace = true
+publish = false
+
+[package.metadata.packager]
+identifier = "com.mynotes.app"
+product-name = "MyNotes"
+formats = ["all"]
+out-dir = "../../target/release/installers"
 
 [dependencies]
 editor-core = { path = "../editor-core" }
