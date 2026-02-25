@@ -27,6 +27,7 @@ An extremely lightweight and fast text editor that uses as little memory as poss
     - [ ] Decouple all IO operations in `crates/io`
     - [ ] Select all (`Ctrl` + `a`)
     - [ ] Save through  `Ctrl` + `s`
+    - [ ] Render tabs properly
     - [x] Selection while scrolling
     - [x] Saving to a file
     - [x] Saving to an existing file (modifying it)
