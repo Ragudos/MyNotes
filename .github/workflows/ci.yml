@@ -25,9 +25,6 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v2-fltk-x11-fix"
-          key: ${{ runner.os }}
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -55,9 +52,6 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "v2-fltk-x11-fix"
-          key: ${{ runner.os }}
 
       # Required if your renderer/ui crates rely on Linux GUI dependencies (like Wayland/X11, ALSA, etc.)
       - name: Install Linux dependencies
