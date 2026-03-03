@@ -1,0 +1,9 @@
+[package]
+name = "mynotes_utils"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+
+[dependencies]

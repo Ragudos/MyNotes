@@ -5,11 +5,12 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-license = "MIT"
 readme = "README.md"
-publish = false
 license-file = "LICENSE"
+publish = false
 
 [workspace.dependencies]
 fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
+thiserror = "2.0.18"
 tempfile = "3.25.0"
+criterion = "0.8.2"

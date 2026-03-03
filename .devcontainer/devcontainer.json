@@ -20,8 +20,7 @@
 
         // TOML support (Cargo.toml editing)
         "tamasfe.even-better-toml",
-
-        // crates.io version hints in Cargo.toml
+        // crates.mynotes_io version hints in Cargo.toml
         "serayuzgur.crates",
 
         // LLDB-based debugger (matches RustRover's debugger)

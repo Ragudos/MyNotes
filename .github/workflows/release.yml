@@ -40,16 +40,16 @@ jobs:
           tool: cargo-packager
 
       - name: Build Executable
-        run: cargo build -p app --release
+        run: cargo build -p mynotes --release
 
       - name: Build and Package Application
-        # Because you are in a workspace, we use `-p app` to target your executable crate
-        run: cargo packager -p app --release
+        # Because you are in a workspace, we use `-p mynotes` to target your executable crate
+        run: cargo packager -p mynotes --release
 
       - name: Upload Installers to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # This grabs the output directory we defined in your crates/app/Cargo.toml
+          # This grabs the output directory we defined in your crates/mynotes/Cargo.toml
           files: |
             target/release/installers/*.dmg
             target/release/installers/*.exe
