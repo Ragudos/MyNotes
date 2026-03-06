@@ -1,0 +1,36 @@
+[package]
+name = "mynotes_core"
+version.workspace = true
+edition.workspace = true
+readme.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[[bench]]
+name = "piece_table"
+harness = false
+
+[[bench]]
+name = "line_tracker"
+harness = false
+
+[[test]]
+name = "memory_bench"
+harness = false
+
+[profile.release]
+debug = 1
+
+[features]
+dhat-heap = []
+dhat-ad-hoc = []
+
+[dependencies]
+thiserror = { workspace = true }
+memchr = { workspace = true }
+num-traits = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+rand = { workspace = true }
+dhat = { workspace = true }
