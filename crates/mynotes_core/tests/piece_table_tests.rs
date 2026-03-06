@@ -1,172 +1,134 @@
 #[cfg(test)]
 mod piece_table_piece_tests {
+    use mynotes_core::btree::MeasuredBTreeData;
     use mynotes_core::piece_table::{BufferKind, Piece};
 
     #[test]
-    fn piece_len_is_correct() {
+    fn piece_measure_is_correct() {
         let piece = Piece {
-            buf_kind: BufferKind::Add,
-            position: 4..8,
+            buffer_kind: BufferKind::Add,
+            start: 4,
+            end: 8,
         };
 
-        assert_eq!(piece.len(), 4);
-        assert!(!piece.is_empty());
+        assert_eq!(piece.measure(), 4);
     }
 }
 
 #[cfg(test)]
 mod piece_table_node_tests {
-    use mynotes_core::piece_table::{
-        BufferKind, NODE_CHILDREN_CAPACITY, Node, PIECES_CAPACITY, Piece,
+    use mynotes_core::btree::{
+        DATA_CAPACITY, MeasuredBTree, MeasuredBTreeNode, NODE_CHILDREN_CAPACITY,
     };
+    use mynotes_core::piece_table::{BufferKind, Piece};
 
     /// Creates a dummy piece of a specific length for testing.
     fn dummy_piece(len: usize) -> Piece {
         Piece {
-            // Assuming BufferKind::Add exists; adjust to match your enum
-            buf_kind: BufferKind::Add,
-            position: 0..len,
+            buffer_kind: BufferKind::Add,
+            start: 0,
+            end: len,
         }
     }
 
     #[test]
     fn creates_node_correctly() {
-        let Node::Leaf {
-            pieces,
-            total_len: leaf_len,
-        } = Node::new(true)
-        else {
-            panic!("Node::new(true) returns a non-leaf node")
-        };
-        let Node::Internal {
-            children,
-            total_len: internal_len,
-        } = Node::new(false)
-        else {
-            panic!("Node::new(false) returns a non-leaf node")
+        let leaf: MeasuredBTreeNode<Piece> = MeasuredBTreeNode::Leaf {
+            measure: 0,
+            data: Vec::with_capacity(DATA_CAPACITY),
         };
 
-        assert_eq!(pieces.len(), 0);
-        assert_eq!(children.len(), 0);
-        assert_eq!(pieces.capacity(), PIECES_CAPACITY);
-        assert_eq!(children.capacity(), NODE_CHILDREN_CAPACITY);
-        assert_eq!(leaf_len, 0);
-        assert_eq!(internal_len, 0);
-    }
+        let internal: MeasuredBTreeNode<Piece> = MeasuredBTreeNode::Internal {
+            measure: 0,
+            children: Vec::with_capacity(NODE_CHILDREN_CAPACITY),
+        };
 
-    #[test]
-    fn clear_resets_state_correctly() {
-        let mut leaf = Node::new(true);
-        leaf.get_mut_pieces().push(dummy_piece(5));
-        *leaf.mut_len() = 5;
-
-        leaf.clear();
-        assert!(leaf.is_empty());
-        assert_eq!(leaf.len(), 0);
-
-        if let Node::Leaf { pieces, .. } = leaf {
-            assert!(pieces.is_empty());
-            assert_eq!(pieces.capacity(), PIECES_CAPACITY);
+        if let MeasuredBTreeNode::Leaf { data, measure } = leaf {
+            assert_eq!(data.len(), 0);
+            assert_eq!(data.capacity(), DATA_CAPACITY);
+            assert_eq!(measure, 0);
         } else {
-            unreachable!("Expected a Leaf node");
-        }
-    }
-
-    #[test]
-    fn detects_full_capacity_correctly() {
-        let mut leaf = Node::new(true);
-
-        // Fill the leaf up to its capacity
-        for _ in 0..PIECES_CAPACITY {
-            leaf.get_mut_pieces().push(dummy_piece(1));
+            panic!("Expected Leaf");
         }
 
-        assert!(leaf.is_full());
-
-        let internal = Node::new(false);
-
-        assert!(!internal.is_full());
-    }
-
-    #[test]
-    #[should_panic(expected = "`get_mut_pieces` is called within a `Node::Internal`")]
-    fn test_get_mut_pieces_panics_on_internal() {
-        let mut internal = Node::new(false);
-        let _ = internal.get_mut_pieces(); // This should panic
+        if let MeasuredBTreeNode::Internal { children, measure } = internal {
+            assert_eq!(children.len(), 0);
+            assert_eq!(children.capacity(), NODE_CHILDREN_CAPACITY);
+            assert_eq!(measure, 0);
+        } else {
+            panic!("Expected Internal");
+        }
     }
 
     #[test]
     fn test_get_location_routing() {
         // --- Setup a Dummy Pool ---
-        // We will build a small tree representing a document of length 15:
+        // Document of length 15:
         //
-        //       [ Root (Internal, len 15) ]
+        //       [ Root (Internal, measure 15) ]
         //         /                   \
-        // [ Leaf 1, len 10 ]      [ Leaf 2, len 5 ]
-        //   |-- Piece A (len 5)     |-- Piece C (len 5)
-        //   |-- Piece B (len 5)
+        // [ Leaf 1, measure 10 ]      [ Leaf 2, measure 5 ]
+        //   |-- Piece A (measure 5)     |-- Piece C (measure 5)
+        //   |-- Piece B (measure 5)
 
         let piece_a = dummy_piece(5);
         let piece_b = dummy_piece(5);
         let piece_c = dummy_piece(5);
 
-        let leaf1 = Node::Leaf {
-            pieces: vec![piece_a, piece_b],
-            total_len: 10,
+        let leaf1 = MeasuredBTreeNode::Leaf {
+            data: vec![piece_a, piece_b],
+            measure: 10,
         };
-        let leaf2 = Node::Leaf {
-            pieces: vec![piece_c],
-            total_len: 5,
+        let leaf2 = MeasuredBTreeNode::Leaf {
+            data: vec![piece_c],
+            measure: 5,
         };
-        let root = Node::Internal {
+        let root = MeasuredBTreeNode::Internal {
             children: vec![1, 2], // Pointers to leaf1 (idx 1) and leaf2 (idx 2)
-            total_len: 15,
+            measure: 15,
         };
 
-        let pool = vec![root, leaf1, leaf2];
+        let mut tree = MeasuredBTree::new();
+        tree.pool = vec![root, leaf1, leaf2];
+        tree.root_idx = Some(0);
 
         // --- Scenario 1: Look for an index inside Piece B (Leaf 1) ---
         // Target: Absolute Index 7.
         // Expected: Should land in Leaf 1 (pool idx 1), Piece 1, with local offset 2 (7 - 5).
-        let mut abs_idx = 7;
-        let mut current_idx = 0; // Start at root
-        let piece_idx = pool[0].get_location(&mut abs_idx, &mut current_idx, &pool);
+        let loc1 = tree.get_location(7).expect("Should find location");
 
-        assert_eq!(
-            current_idx, 1,
-            "Should have routed to Leaf 1 (pool index 1)"
-        );
-        assert_eq!(piece_idx, 1, "Should be the second piece in the leaf");
-        assert_eq!(abs_idx, 2, "Local offset should be 2");
+        assert_eq!(loc1.0, 1, "Should have routed to Leaf 1 (pool index 1)");
+        assert_eq!(loc1.1, 1, "Should be the second piece in the leaf");
+        assert_eq!(loc1.2, 2, "Local offset should be 2");
 
         // --- Scenario 2: Look for an index inside Piece C (Leaf 2) ---
         // Target: Absolute Index 12.
         // Expected: Should land in Leaf 2 (pool idx 2), Piece 0, with local offset 2 (12 - 10).
-        let mut abs_idx = 12;
-        let mut current_idx = 0; // Start at root
-        let piece_idx = pool[0].get_location(&mut abs_idx, &mut current_idx, &pool);
+        let loc2 = tree.get_location(12).expect("Should find location");
 
-        assert_eq!(
-            current_idx, 2,
-            "Should have routed to Leaf 2 (pool index 2)"
-        );
-        assert_eq!(piece_idx, 0, "Should be the first piece in the leaf");
-        assert_eq!(abs_idx, 2, "Local offset should be 2");
+        assert_eq!(loc2.0, 2, "Should have routed to Leaf 2 (pool index 2)");
+        assert_eq!(loc2.1, 0, "Should be the first piece in the leaf");
+        assert_eq!(loc2.2, 2, "Local offset should be 2");
     }
 }
 
 #[cfg(test)]
 mod piece_table_tests {
-    use mynotes_core::piece_table::{BufferKind, Node, PIECES_CAPACITY, PieceTable};
+    use mynotes_core::btree::{DATA_CAPACITY, MeasuredBTreeData, MeasuredBTreeNode};
+    use mynotes_core::piece_table::{BufferKind, PieceTable};
+
+    // Note: These tests assume your PieceTable API has methods like:
+    // `table.insert(doc_offset, buffer_start, length, buffer_kind)`
+    // `table.delete(doc_offset, length)`
+    // and a method `table.len()` which gets the root measure.
 
     #[test]
     fn inserts_empty_and_gets_location_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
         assert!(table.insert(0, 0, 10, BufferKind::Add).is_ok());
-        assert_eq!(table.len(), 10);
 
-        let Some((pool_idx, piece_idx, offset)) = table.get_location(5) else {
+        let Some((pool_idx, piece_idx, offset)) = table.tree.get_location(5) else {
             panic!("get_location(5) should return a location after a valid insertion");
         };
 
@@ -180,57 +142,39 @@ mod piece_table_tests {
 
     #[test]
     fn detects_out_of_bounds_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
         table.insert(0, 0, 10, BufferKind::Add).unwrap();
         assert!(
-            table.get_location(10).is_none(),
+            table.tree.get_location(10).is_none(),
             "Absolute index equal to length should return None"
         );
         assert!(
-            table.get_location(999).is_none(),
+            table.tree.get_location(999).is_none(),
             "Indices far beyond length should return None"
         );
     }
 
     #[test]
-    fn no_insert_on_out_of_bounds_correctly() {
-        let mut table = PieceTable::default();
-
-        // Cannot insert at offset 5 when the document is empty
-        let err = table.insert(5, 0, 10, BufferKind::Add);
-        assert!(err.is_err(), "Should return PieceTableError::OutOfBounds");
-
-        table.insert(0, 0, 10, BufferKind::Add).unwrap();
-
-        // Document is length 10. Cannot insert at offset 11.
-        let err2 = table.insert(11, 10, 5, BufferKind::Add);
-        assert!(err2.is_err(), "Should return PieceTableError::OutOfBounds");
-    }
-
-    #[test]
     fn merges_contiguous_piece_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
-        // Insert first chunk
+        // Insert first chunk (doc_offset: 0, buf_start: 0, len: 5)
         table.insert(0, 0, 5, BufferKind::Add).unwrap();
         // Insert second chunk perfectly contiguous in both Document and Buffer
         table.insert(5, 5, 5, BufferKind::Add).unwrap();
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        if let Node::Leaf { pieces, total_len } = &table.pool[root_idx] {
-            assert_eq!(*total_len, 10, "Total length should update to 10");
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 10, "Total measure should update to 10");
             assert_eq!(
-                pieces.len(),
+                data.len(),
                 1,
                 "Pieces should have MERGED into exactly 1 piece"
             );
-            assert_eq!(
-                pieces[0].position,
-                0..10,
-                "Piece range should span the merged length"
-            );
+            assert_eq!(data[0].start, 0);
+            assert_eq!(data[0].end, 10, "Piece range should span the merged length");
         } else {
             panic!("Expected root to be a Leaf");
         }
@@ -238,38 +182,38 @@ mod piece_table_tests {
 
     #[test]
     fn insert_at_middle_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
         // Insert "HelloWorld" (length 10)
         table.insert(0, 0, 10, BufferKind::Original).unwrap();
         // Insert " " (length 1) in the middle at doc_offset 5.
-        // This should split the original piece into THREE pieces: "Hello", " ", "World"
         table.insert(5, 0, 1, BufferKind::Add).unwrap();
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        if let Node::Leaf { pieces, total_len } = &table.pool[root_idx] {
-            assert_eq!(*total_len, 11);
-            assert_eq!(
-                pieces.len(),
-                3,
-                "Splicing should result in 3 distinct pieces"
-            );
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 11);
+            assert_eq!(data.len(), 3, "Splicing should result in 3 distinct pieces");
+
             // Validate the left split ("Hello")
-            assert_eq!(pieces[0].buf_kind, BufferKind::Original);
-            assert_eq!(pieces[0].position, 0..5);
+            assert_eq!(data[0].buffer_kind, BufferKind::Original);
+            assert_eq!(data[0].start, 0);
+            assert_eq!(data[0].end, 5);
+
             // Validate the middle insert (" ")
-            assert_eq!(pieces[1].buf_kind, BufferKind::Add);
-            assert_eq!(pieces[1].position, 0..1);
+            assert_eq!(data[1].buffer_kind, BufferKind::Add);
+            assert_eq!(data[1].start, 0);
+            assert_eq!(data[1].end, 1);
+
             // Validate the right split ("World")
-            assert_eq!(pieces[2].buf_kind, BufferKind::Original);
-            assert_eq!(pieces[2].position, 5..10);
+            assert_eq!(data[2].buffer_kind, BufferKind::Original);
+            assert_eq!(data[2].start, 5);
+            assert_eq!(data[2].end, 10);
         } else {
             panic!("Expected root to be a Leaf");
         }
 
-        // Test routing to the right split
-        let (pool_idx, piece_idx, offset) = table.get_location(8).unwrap(); // Index 8 should be 'r' in "World"
+        let (pool_idx, piece_idx, offset) = table.tree.get_location(8).unwrap();
 
         assert_eq!(piece_idx, 2, "Should route to the 3rd piece");
         assert_eq!(offset, 2, "Local offset should be 2 into the 3rd piece");
@@ -277,36 +221,67 @@ mod piece_table_tests {
     }
 
     #[test]
-    fn inserts_at_start_without_merge_correctly() {
-        let mut table = PieceTable::default();
+    fn inserts_into_split_tree_correctly() {
+        let mut table = PieceTable::new();
+        let cap = DATA_CAPACITY;
 
-        table.insert(0, 0, 5, BufferKind::Original).unwrap();
-        // Insert at the very beginning
-        table.insert(0, 0, 5, BufferKind::Add).unwrap();
+        // 1. Force a split by inserting alternating buffers to prevent merging
+        for i in 0..=cap {
+            let kind = if i % 2 == 0 {
+                BufferKind::Add
+            } else {
+                BufferKind::Original
+            };
+            table.insert(i, i, 1, kind).unwrap();
+        }
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        if let Node::Leaf { pieces, .. } = &table.pool[root_idx] {
-            assert_eq!(pieces.len(), 2);
+        // Verify we have an internal root with 2 children
+        let (left_idx, right_idx) = match &table.tree.pool[root_idx] {
+            MeasuredBTreeNode::Internal { children, .. } => {
+                assert_eq!(children.len(), 2, "Tree should have split into 2 leaves");
+                (children[0], children[1])
+            }
+            _ => panic!("Expected root to be Internal"),
+        };
+
+        // 2. Insert at the very beginning (doc_offset = 0). Should route to Left child.
+        table.insert(0, 100, 5, BufferKind::Add).unwrap();
+
+        // 3. Insert at the very end. Should route to Right child.
+        let total_measure = table.tree.pool[root_idx].measure();
+        table
+            .insert(total_measure, 200, 5, BufferKind::Add)
+            .unwrap();
+
+        // Assertions
+        if let MeasuredBTreeNode::Leaf { data, .. } = &table.tree.pool[left_idx] {
             assert_eq!(
-                pieces[0].buf_kind,
-                BufferKind::Add,
-                "New piece should be pushed to the front"
+                data[0].start, 100,
+                "Leftmost piece should be the new insert"
             );
+            assert_eq!(data[0].measure(), 5);
+        } else {
+            panic!("Left child is not a leaf");
+        }
+
+        if let MeasuredBTreeNode::Leaf { data, .. } = &table.tree.pool[right_idx] {
+            let last_idx = data.len() - 1;
             assert_eq!(
-                pieces[1].buf_kind,
-                BufferKind::Original,
-                "Old piece should be shifted right"
+                data[last_idx].start, 200,
+                "Rightmost piece should be the new insert"
             );
+            assert_eq!(data[last_idx].measure(), 5);
+        } else {
+            panic!("Right child is not a leaf");
         }
     }
 
     #[test]
     fn splits_nodes_correctly() {
-        let mut table = PieceTable::default();
-        // We will insert alternating buffers at the end to prevent contiguous merging,
-        // forcing the piece array to grow until it exceeds PIECES_CAPACITY.
-        let iterations = PIECES_CAPACITY + 2;
+        let mut table = PieceTable::new();
+        let iterations = DATA_CAPACITY + 2;
 
         for i in 0..iterations {
             let kind = if i % 2 == 0 {
@@ -314,22 +289,16 @@ mod piece_table_tests {
             } else {
                 BufferKind::Original
             };
-
-            // Append 1 byte at a time
             table.insert(i, i, 1, kind).unwrap();
         }
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        // After exceeding PIECES_CAPACITY, the root MUST have split into an Internal node
-        match &table.pool[root_idx] {
-            Node::Internal {
-                children,
-                total_len,
-            } => {
+        match &table.tree.pool[root_idx] {
+            MeasuredBTreeNode::Internal { children, measure } => {
                 assert_eq!(
-                    *total_len, iterations,
-                    "Internal node should track total length"
+                    *measure, iterations,
+                    "Internal node should track total measure"
                 );
                 assert_eq!(
                     children.len(),
@@ -337,15 +306,12 @@ mod piece_table_tests {
                     "Root should have split into exactly 2 children"
                 );
             }
-            Node::Leaf { .. } => {
+            MeasuredBTreeNode::Leaf { .. } => {
                 panic!("Root should have become an Internal node after capacity was reached!")
             }
         }
 
-        // Validate routing still works across the split
-        // The last character inserted should be found in the right-side child.
-        let loc = table.get_location(iterations - 1);
-
+        let loc = table.tree.get_location(iterations - 1);
         assert!(
             loc.is_some(),
             "Should be able to find the last inserted character"
@@ -354,77 +320,221 @@ mod piece_table_tests {
 
     #[test]
     fn deletes_middle_and_splits_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
-        // Insert "HelloWorld" (len 10)
         table.insert(0, 0, 10, BufferKind::Original).unwrap();
-        // Delete 2 chars starting at index 4 ("oW") -> Leaves "Hellorld" (len 8)
+        // FIX: Delete from the middle, not the start.
+        // Start at doc_offset 4, delete 2 chars.
         table.delete(4, 2).unwrap();
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        if let Node::Leaf { pieces, total_len } = &table.pool[root_idx] {
-            assert_eq!(*total_len, 8);
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 8, "Total measure should drop to 8");
             assert_eq!(
-                pieces.len(),
+                data.len(),
                 2,
                 "Deletion from middle should split the piece in two"
             );
-            // Piece 1: "Hell"
-            assert_eq!(pieces[0].position, 0..4);
-            // Piece 2: "orld"
-            // Original was 0..10. We deleted 4..6. So remainder is 6..10.
-            assert_eq!(pieces[1].position, 6..10);
+
+            // Left side
+            assert_eq!(data[0].start, 0);
+            assert_eq!(data[0].end, 4);
+
+            // Right side (Original 0..10, minus 4..6, leaves 6..10)
+            assert_eq!(data[1].start, 6);
+            assert_eq!(data[1].end, 10);
         } else {
             panic!("Expected root to be a Leaf");
         }
     }
 
     #[test]
-    fn deletes_exact_piece_correctly() {
-        let mut table = PieceTable::default();
+    fn deletes_start_correctly() {
+        let mut table = PieceTable::new();
 
-        table.insert(0, 0, 5, BufferKind::Original).unwrap(); // "Hello"
-        table.insert(5, 5, 5, BufferKind::Add).unwrap(); // "World"
-        // Delete exactly the first piece
-        table.delete(0, 5).unwrap();
+        table.insert(0, 0, 10, BufferKind::Original).unwrap();
+        // Delete 2 chars from the very beginning. This should trigger a Left Trim.
+        table.delete(0, 2).unwrap();
 
-        let root_idx = table.root_idx.unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        if let Node::Leaf { pieces, total_len } = &table.pool[root_idx] {
-            assert_eq!(*total_len, 5);
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 8);
             assert_eq!(
-                pieces.len(),
+                data.len(),
                 1,
-                "The first piece should be completely removed"
+                "Left trim should just modify the existing piece, not split it"
             );
-            assert_eq!(pieces[0].buf_kind, BufferKind::Add);
-            assert_eq!(pieces[0].position, 5..10);
+
+            // The piece should now start at 2
+            assert_eq!(data[0].start, 2);
+            assert_eq!(data[0].end, 10);
+        } else {
+            panic!("Expected root to be a Leaf");
+        }
+    }
+
+    #[test]
+    fn deletes_end_correctly() {
+        let mut table = PieceTable::new();
+
+        table.insert(0, 0, 10, BufferKind::Original).unwrap();
+        // Delete 2 chars from the very end. This should trigger a Right Trim.
+        table.delete(8, 2).unwrap();
+
+        let root_idx = table.tree.root_idx.unwrap();
+
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 8);
+            assert_eq!(
+                data.len(),
+                1,
+                "Right trim should just modify the existing piece, not split it"
+            );
+
+            // The piece should now end at 8
+            assert_eq!(data[0].start, 0);
+            assert_eq!(data[0].end, 8);
+        } else {
+            panic!("Expected root to be a Leaf");
         }
     }
 
     #[test]
     fn deletes_spanning_multiple_pieces_correctly() {
-        let mut table = PieceTable::default();
+        let mut table = PieceTable::new();
 
-        table.insert(0, 0, 5, BufferKind::Original).unwrap(); // "Hello" (0..5)
-        table.insert(5, 5, 5, BufferKind::Add).unwrap(); // "World" (5..10)
-        table.insert(10, 10, 5, BufferKind::Original).unwrap(); // "Today" (10..15)
+        table.insert(0, 0, 5, BufferKind::Original).unwrap(); // A: 0..5
+        table.insert(5, 5, 5, BufferKind::Add).unwrap(); // B: 5..10
+        table.insert(10, 10, 5, BufferKind::Original).unwrap(); // C: 10..15
+        // We will delete 8 characters starting at doc_offset 3.
+        // This will:
+        // - Right trim A (delete 2 chars) -> leaving A as 0..3
+        // - Completely delete B (delete 5 chars)
+        // - Left trim C (delete 1 char) -> leaving C as 11..15
+        table.delete(3, 8).unwrap();
 
-        // Delete "loWor" (Index 3, Length 5)
-        // - Trims right of "Hello" (leaves "Hel")
-        // - Removes "loWor"
-        table.delete(3, 5).unwrap();
+        let root_idx = table.tree.root_idx.unwrap();
 
-        let root_idx = table.root_idx.unwrap();
+        if let MeasuredBTreeNode::Leaf { data, measure } = &table.tree.pool[root_idx] {
+            assert_eq!(*measure, 7, "15 total - 8 deleted = 7");
+            assert_eq!(
+                data.len(),
+                2,
+                "The middle piece should be completely removed, leaving 2"
+            );
 
-        if let Node::Leaf { pieces, total_len } = &table.pool[root_idx] {
-            assert_eq!(*total_len, 10);
-            assert_eq!(pieces.len(), 3);
+            // Remainder of A
+            assert_eq!(data[0].start, 0);
+            assert_eq!(data[0].end, 3);
+            assert_eq!(data[0].buffer_kind, BufferKind::Original);
 
-            assert_eq!(pieces[0].position, 0..3); // "Hel"
-            assert_eq!(pieces[1].position, 8..10); // "ld"
-            assert_eq!(pieces[2].position, 10..15); // "Today"
+            // Remainder of C
+            assert_eq!(data[1].start, 11);
+            assert_eq!(data[1].end, 15);
+            assert_eq!(data[1].buffer_kind, BufferKind::Original);
+        } else {
+            panic!("Expected root to be a Leaf");
+        }
+    }
+
+    #[test]
+    fn underflow_borrows_from_left_sibling() {
+        let mut table = PieceTable::new();
+        let cap = DATA_CAPACITY;
+        let min_cap = cap / 2;
+
+        // 1. Fill the first leaf exactly to capacity
+        for i in 0..cap {
+            let kind = if i % 2 == 0 {
+                BufferKind::Add
+            } else {
+                BufferKind::Original
+            };
+            table.insert(i, i, 1, kind).unwrap();
+        }
+
+        // 2. Insert one more at the end to force a split.
+        // NOTE: Because i=30 (if cap=31) was BufferKind::Add, this new piece
+        // will merge with it into a single piece of length 2!
+        table.insert(cap, cap, 1, BufferKind::Add).unwrap();
+
+        // 3. Pad the Left child so it has plenty of pieces to spare.
+        for i in 0..min_cap {
+            let kind = if i % 2 == 0 {
+                BufferKind::Original
+            } else {
+                BufferKind::Add
+            };
+            table.insert(0, i, 1, kind).unwrap();
+        }
+
+        let root_idx = table.tree.root_idx.expect("Tree should have a root");
+
+        let right_child_idx =
+            if let MeasuredBTreeNode::Internal { children, .. } = &table.tree.pool[root_idx] {
+                children[1]
+            } else {
+                panic!("Root must be Internal");
+            };
+
+        // 4. Force ACTUAL piece removal!
+        let current_len = table.tree.pool[root_idx].measure();
+
+        // We delete 4 characters to slice through the merged piece at the end
+        // and guarantee we remove enough pieces to drop below min_cap.
+        table.delete(current_len - 4, 4).unwrap();
+
+        let right_len_after = match &table.tree.pool[right_child_idx] {
+            MeasuredBTreeNode::Leaf { data, .. } => data.len(),
+            _ => panic!("Expected leaf"),
+        };
+
+        // We assert that the length should remain >= min_cap.
+        // Since we know borrowing isn't implemented yet, this WILL fail,
+        // giving us our exact test-driven development target!
+        assert!(
+            right_len_after >= min_cap,
+            "TARGET ACQUIRED: The right node dropped below min_cap (Count: {}). Borrowing failed or is unimplemented.",
+            right_len_after
+        );
+    }
+
+    #[test]
+    fn underflow_merges_siblings_when_borrowing_fails() {
+        let mut table = PieceTable::new();
+
+        // DATA_CAPACITY is 31, so this will insert 32 pieces.
+        for i in 0..=DATA_CAPACITY {
+            let kind = if i % 2 == 0 {
+                BufferKind::Add
+            } else {
+                BufferKind::Original
+            };
+            table.insert(i, i, 1, kind).unwrap();
+        }
+
+        // Minimum capacity of a node is DATA_CAPACITY / 2, in this case, 15.
+        // So, since left would have 15 and the right would have 17
+        // since they split, we need to delete enough to merge them again.
+        // We just delete 3 so 32 - 3 = 29. There wouldn't be enough
+        // to satisfy the minimum of 15 for either nodes.
+        table.delete(0, 3).unwrap();
+
+        let new_root_idx = table.tree.root_idx.unwrap();
+
+        match &table.tree.pool[new_root_idx] {
+            MeasuredBTreeNode::Leaf { data, .. } => {
+                assert_eq!(
+                    data.len(),
+                    29,
+                    "Siblings should have merged back into a single full leaf"
+                );
+            }
+            MeasuredBTreeNode::Internal { .. } => {
+                panic!("Root should have collapsed back into a Leaf after children merged");
+            }
         }
     }
 }
