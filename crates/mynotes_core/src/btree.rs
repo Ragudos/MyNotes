@@ -724,7 +724,7 @@ where
             .map(|pool_idx| self.pool[*pool_idx].measure())
             .sum::<T::Measure>();
 
-        if let MeasuredBTreeNode::Internal { children, measure } = &mut self.pool[pool_idx] {
+        if let MeasuredBTreeNode::Internal { children, measure } = &mut self.pool[new_idx] {
             *measure = right_children_measure;
             *children = right_children;
         }

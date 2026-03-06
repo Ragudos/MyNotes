@@ -221,6 +221,41 @@ mod piece_table_tests {
     }
 
     #[test]
+    fn internal_node_split_maintains_total_measure() {
+        let mut table = PieceTable::new();
+
+        // 1000 insertions is more than enough to force multiple leaves
+        // AND internal nodes to overflow and split, regardless of your capacity limits.
+        let num_inserts = 1000;
+
+        for i in 0..num_inserts {
+            // Always insert exactly in the middle of the current document.
+            // This forces nodes to split right down the middle, triggering `split_internal`.
+            let insert_pos = i / 2;
+
+            table.insert(insert_pos, i, 1, BufferKind::Add).unwrap();
+
+            // Grab the root node to check its weight
+            let root_idx = table.tree.root_idx.expect("Tree should have a root");
+            let actual_measure = table.tree.pool[root_idx].measure();
+
+            // THE CATCH: The root's total measure MUST equal the number of items
+            // we have inserted so far. If `split_internal` overwrites a branch
+            // and orphans it, this assertion will fail on the exact iteration it happens!
+            assert_eq!(
+                actual_measure,
+                i + 1,
+                "CRITICAL B-TREE FAILURE: Tree lost weight after inserting item {}. \
+             Expected total measure to be {}, but root reported {}. \
+             An internal node split likely orphaned a branch!",
+                i,
+                i + 1,
+                actual_measure
+            );
+        }
+    }
+
+    #[test]
     fn inserts_into_split_tree_correctly() {
         let mut table = PieceTable::new();
         let cap = DATA_CAPACITY;

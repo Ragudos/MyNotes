@@ -60,6 +60,12 @@ impl PieceTable {
         }
     }
 
+    #[inline]
+    #[must_use]
+    pub fn get_at(&self, target: usize) -> Option<(&Piece, usize)> {
+        self.tree.get_at(target)
+    }
+
     pub fn insert(
         &mut self,
         doc_offset: usize,
