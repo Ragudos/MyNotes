@@ -61,10 +61,10 @@ pub type PoolIndex = usize;
 /// - **`M`**: The `Measure` of this `MeasuredBTree` for error formatting.
 pub type MeasuredBTreeResult<T, M> = Result<T, MeasuredBTreeError<M>>;
 
-/// 1 MB base capacity for `PieceTable` vector
-pub const BASE_CAPACITY: usize = 1024 * 1024;
+/// 1024B base capacity for `PieceTable` vector
+pub const BASE_CAPACITY: usize = 1024;
 /// Minimum B-Tree degree
-const T: usize = 16;
+const T: usize = 8;
 /// # Reasoning
 ///
 /// The maximum amount of `MeasuredBTreeData` instances a `Node::Leaf` can hold. The formula is
