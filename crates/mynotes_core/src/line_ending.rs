@@ -1,6 +1,16 @@
 use memchr::memchr2_iter;
 use std::collections::HashMap;
 
+/// A type alias for `HashMap<LineEnding, usize>`
+/// where each `LineEnding` key is a representation of how many
+/// times the line ending appears.
+///
+/// Tracks the distribution of line endings in a text.
+pub type LineEndingScores = HashMap<LineEnding, usize>;
+
+pub const NEWLINE_BYTE: u8 = b'\n';
+pub const CARRIAGE_RETURN_BYTE: u8 = b'\r';
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum LineEnding {
@@ -11,16 +21,6 @@ pub enum LineEnding {
     /// Carriage Return (CR) - Used in older Mac OS (pre-OS X) (`\r`).
     CR,
 }
-
-/// A type alias for `HashMap<LineEnding, usize>`
-/// where each `LineEnding` key is a representation of how many
-/// time the line ending appears.
-///
-/// Tracks the distribution of line endings in a text.
-pub type LineEndingScores = HashMap<LineEnding, usize>;
-
-pub const NEWLINE_BYTE: u8 = b'\n';
-pub const CARRIAGE_RETURN_BYTE: u8 = b'\r';
 
 impl From<&[u8]> for LineEnding {
     /// Detects the line ending style that appears

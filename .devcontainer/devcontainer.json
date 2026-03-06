@@ -8,9 +8,22 @@
         "rust-lang.rust-analyzer", 
         "matklad.rust-analyzer",
         "serayuzgur.crates",
-        "vadimcn.vscode-lldb"
+
+        // LLDB-based debugger (matches RustRover's debugger)
+        "vadimcn.vscode-lldb",
+
+        // Inline error/warning display (similar to RustRover's gutter annotations)
+        "usernamehw.errorlens",
+
+        // Test explorer integration
+        "swellaby.vscode-rust-test-adapter",
+        "hbenl.vscode-test-explorer"
       ]
-    }
-  },
-  "postCreateCommand": "cargo install --locked cargo-edit cargo-watch"
+    },
+
+  // Install the Rust toolchain components RustRover ships with by default
+  "postCreateCommand": "rustup component add rust-src clippy rustfmt && cargo fetch && sudo apt-get update && sudo apt-get install perf && cargo install --locked cargo-edit cargo-watch cargo-bench cargo-flamegraph",
+
+  "remoteUser": "vscode"
+  }
 }
