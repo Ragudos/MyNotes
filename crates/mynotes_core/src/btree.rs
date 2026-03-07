@@ -64,7 +64,7 @@ pub type MeasuredBTreeResult<T, M> = Result<T, MeasuredBTreeError<M>>;
 /// 1024B base capacity for `PieceTable` vector
 pub const BASE_CAPACITY: usize = 1024;
 /// Minimum B-Tree degree
-const T: usize = 8;
+const T: usize = 16;
 /// # Reasoning
 ///
 /// The maximum amount of `MeasuredBTreeData` instances a `Node::Leaf` can hold. The formula is
@@ -1057,14 +1057,14 @@ where
 
     fn balance_child(&mut self, parent_pool_idx: PoolIndex, child_i: usize) {
         let child_pool_idx = self.get_child_idx(parent_pool_idx, child_i);
-        let child_len = self.node_len(child_pool_idx);
+        let parent_len = self.node_len(parent_pool_idx);
         let is_leaf = self.is_child_leaf(parent_pool_idx, child_i);
         let min_cap = get_min_cap(is_leaf);
         // 1. Define siblings as Option<(usize, bool)>.
-        // This allows `.flatten()` to perfectly skip out-of-bounds (None) siblings!
+        // ThisG allows `.flatten()` to perfectly skip out-of-bounds (None) siblings!
         let siblings = [
             child_i.checked_sub(1).map(|i| (i, false)), // Left
-            (child_i + 1 < child_len).then(|| (child_i + 1, true)), // Right
+            (child_i + 1 < parent_len).then(|| (child_i + 1, true)), // Right
         ];
 
         // 2. Try Borrowing

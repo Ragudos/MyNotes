@@ -116,7 +116,6 @@ mod piece_table_node_tests {
 mod piece_table_tests {
     use mynotes_core::btree::{DATA_CAPACITY, MeasuredBTreeData, MeasuredBTreeNode};
     use mynotes_core::piece_table::{BufferKind, PieceTable};
-
     // Note: These tests assume your PieceTable API has methods like:
     // `table.insert(doc_offset, buffer_start, length, buffer_kind)`
     // `table.delete(doc_offset, length)`
@@ -563,7 +562,7 @@ mod piece_table_tests {
             MeasuredBTreeNode::Leaf { data, .. } => {
                 assert_eq!(
                     data.len(),
-                    29,
+                    DATA_CAPACITY - 2,
                     "Siblings should have merged back into a single full leaf"
                 );
             }
