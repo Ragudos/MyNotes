@@ -436,4 +436,93 @@ mod tests {
         // Final exhaustive check
         assert_tracker_matches_string(&tracker, &shadow_text);
     }
+
+    /// In btree `balance_child`, at first, I accidentally used the child's
+    /// length (the child to be deleted/balanced) instead of its parent's,
+    /// so it was rightfully running the unreachable!() code
+    /// in:
+    ///
+    /// ```
+    /// let Some((sibling_idx, is_right)) = siblings.into_iter().flatten().next() else {
+    ///     unreachable!("The first valid sibling must exist.");
+    /// };
+    /// ```
+    #[test]
+    fn test_reproduce_benchmark_delete_crash() {
+        use mynotes_core::line_tracker::{LineChunk, LineTracker, LineTrackerSummary};
+
+        // Helper to create chunks
+        fn make_chunk(text: &str) -> LineChunk {
+            LineChunk {
+                byte_length: text.len(),
+                newlines: text
+                    .bytes()
+                    .enumerate()
+                    .filter(|(_, b)| *b == b'\n')
+                    .map(|(i, _)| i)
+                    .collect(),
+            }
+        }
+
+        let mut tracker = LineTracker::new();
+        let mut total_bytes = 0;
+
+        // 1. Build the exact tree topology from the benchmark
+        for i in 0..10_000 {
+            let text = "Line to be partially deleted\n";
+            tracker.insert(
+                LineTrackerSummary {
+                    byte_count: total_bytes,
+                    line_count: i,
+                },
+                make_chunk(text),
+            );
+            total_bytes += text.len();
+        }
+
+        // 2. Calculate the exact middle 50% bounds
+        let start_byte = total_bytes / 4;
+        let end_byte = total_bytes - (total_bytes / 4);
+
+        // 3. Trigger the crash
+        // This should panic or hang exactly as your benchmark does!
+        tracker.delete_range(start_byte, end_byte);
+    }
+
+    #[test]
+    fn test_line_chunk_split_out_of_bounds_overflow() {
+        use mynotes_core::btree::MeasuredBTreeData;
+        use mynotes_core::line_tracker::{LineChunk, LineTrackerSummary}; // Adjust path if your trait is elsewhere
+
+        // 1. Create a standard chunk that is 20 bytes long
+        let mut chunk = LineChunk {
+            byte_length: 20,
+            newlines: vec![9, 19],
+        };
+
+        // 2. Create a measure that asks to split at byte 50.
+        // This simulates the B-Tree's `delete_in_leaf` accidentally
+        // passing an overshoot offset during a massive multi-node deletion.
+        let out_of_bounds_measure = LineTrackerSummary {
+            byte_count: 50,
+            line_count: 5, // Arbitrary for this test
+        };
+
+        // 3. Trigger the split!
+        // Without the `.min(self.byte_length)` clamp, THIS is the line
+        // that panics with "attempt to subtract with overflow".
+        let right_chunk = chunk.split_at(out_of_bounds_measure);
+
+        // 4. Verify the clamped behavior
+        // If the fix is working, it should just return an empty right chunk.
+        assert_eq!(chunk.byte_length, 20, "Left chunk should remain unchanged");
+        assert_eq!(
+            right_chunk.byte_length, 0,
+            "Right chunk should be completely empty"
+        );
+        assert!(
+            right_chunk.newlines.is_empty(),
+            "Right chunk should have no newlines"
+        );
+    }
 }
