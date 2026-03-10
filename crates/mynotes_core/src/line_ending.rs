@@ -28,9 +28,9 @@ impl From<&[u8]> for LineEnding {
     ///
     /// # Example
     /// ```
-    /// use mynotes_core::line_ending::LineEnding
+    /// use mynotes_core::line_ending::LineEnding;
     ///
-    /// let sample = b"f\r\ns\r\nt";
+    /// let sample: &[u8] = b"f\r\ns\r\nt";
     ///
     /// assert_eq!(LineEnding::from(sample), LineEnding::CRLF);
     /// ```
@@ -155,7 +155,7 @@ impl LineEnding {
         match self {
             LineEnding::LF => b"\n",
             LineEnding::CRLF => b"\r\n",
-            LineEnding::CR => b"\n",
+            LineEnding::CR => b"\r",
         }
     }
 

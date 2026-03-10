@@ -309,8 +309,9 @@ where
     ///
     /// ```
     /// use mynotes_core::btree::MeasuredBTree;
+    /// use mynotes_core::piece_table::Piece;
     ///
-    /// let tree = MeasuredBTree::new();
+    /// let mut tree = MeasuredBTree::<Piece>::new();
     ///
     /// tree.deallocate_node(1); // no op
     ///
@@ -326,7 +327,7 @@ where
     /// // Next allocation should recycle idx 0 without growing the pool
     /// let idx2 = tree.allocate_node(true);
     ///
-    /// assert_eq!(tree, 0);
+    /// assert_eq!(idx2, 0);
     /// assert_eq!(tree.pool.len(), 1);
     /// ```
     pub fn deallocate_node(&mut self, pool_idx: PoolIndex) {
@@ -360,8 +361,9 @@ where
     ///
     /// ```
     /// use mynotes_core::btree::MeasuredBTree;
+    /// use mynotes_core::piece_table::Piece;
     ///
-    /// let mut tree = MeasuredBTree::new();
+    /// let mut tree = MeasuredBTree::<Piece>::new();
     ///
     /// // Force allocate a node (pool is initially empty)
     /// let idx1 = tree.allocate_node(true); // Creates Leaf
@@ -373,7 +375,7 @@ where
     /// // Next allocation should recycle idx 0 without growing the pool
     /// let idx2 = tree.allocate_node(true);
     ///
-    /// assert_eq!(tree, 0);
+    /// assert_eq!(idx2, 0);
     /// assert_eq!(tree.pool.len(), 1);
     /// ```
     pub fn allocate_node(&mut self, is_leaf: bool) -> PoolIndex {
@@ -1127,6 +1129,13 @@ where
 
                 // If the child is healthy, break out of the borrow loop
                 if self.node_len(child_pool_idx) >= min_cap {
+                    break;
+                }
+
+                // FIX: If the parent only has 1 child, siblings DO NOT EXIST.
+                // We cannot borrow or merge. We must break to prevent an infinite loop
+                // and avoid the panic in `balance_child`.
+                if self.node_len(parent_pool_idx) < 2 {
                     break;
                 }
 
