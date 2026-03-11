@@ -26,6 +26,7 @@ dhat-heap = []
 dhat-ad-hoc = []
 
 [dependencies]
+mynotes_io = { path = "../mynotes_io" }
 thiserror = { workspace = true }
 memchr = { workspace = true }
 num-traits = { workspace = true }

@@ -512,6 +512,7 @@ dependencies = [
  "criterion",
  "dhat",
  "memchr",
+ "mynotes_io",
  "num-traits",
  "rand",
  "thiserror",

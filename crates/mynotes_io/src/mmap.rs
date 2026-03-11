@@ -4,6 +4,7 @@ use std::cmp::min;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct MmapFile {
     /// Temporary solution to prevent external modification,
     /// resulting in UB or undefined behavior.
@@ -75,6 +76,12 @@ impl MmapFile {
         unsafe { mmap.get_unchecked(index..end) }
     }
 
+    pub fn release(&mut self) {
+        self.mmap = None;
+        self._file = None;
+        self.path = PathBuf::new();
+    }
+
     ///
     #[inline]
     pub fn len(&self) -> usize {
@@ -89,6 +96,11 @@ impl MmapFile {
     #[inline]
     pub fn get_path(&self) -> &Path {
         &self.path
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &[u8] {
+        self.mmap.as_deref().unwrap_or(&[])
     }
 }
 
