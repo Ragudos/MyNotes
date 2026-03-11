@@ -16,14 +16,14 @@ fn main() {
     let mut table = PieceTable::new();
 
     // 100,000 random edits to simulate heavy fragmentation
-    for (current_length, i) in (0..100_000).enumerate() {
+    for (current_length, i) in (0u64..100_000u64).enumerate() {
         #[cfg(feature = "dhat-ad-hoc")]
         dhat::ad_hoc_event(1);
 
         let insert_pos = if current_length == 0 {
             0
         } else {
-            current_length / 2
+            (current_length / 2) as u64
         };
         table.insert(insert_pos, i, 1, BufferKind::Add).unwrap();
     }

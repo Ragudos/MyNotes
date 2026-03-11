@@ -64,7 +64,7 @@ pub type MeasuredBTreeResult<T, M> = Result<T, MeasuredBTreeError<M>>;
 /// 1024B base capacity for `PieceTable` vector
 pub const BASE_CAPACITY: usize = 1024;
 /// Minimum B-Tree degree
-const T: usize = 16;
+const T: u8 = 16;
 /// # Reasoning
 ///
 /// The maximum amount of `MeasuredBTreeData` instances a `Node::Leaf` can hold. The formula is
@@ -92,10 +92,10 @@ const T: usize = 16;
 /// - **`[C]`:** The new node pushed to the parent
 /// - **`[A, B]`:** The left node (exactly 2 items)
 /// - **`[D, E]`:** The right node (exactly 2 items)
-pub const DATA_CAPACITY: usize = 2 * T - 1;
+pub const DATA_CAPACITY: u8 = 2 * T - 1;
 /// From minimum degree `T`, double it
 /// to be the maximum degree or capacity.
-pub const NODE_CHILDREN_CAPACITY: usize = 2 * T;
+pub const NODE_CHILDREN_CAPACITY: u8 = 2 * T;
 
 pub trait Measure:
     Debug
@@ -111,16 +111,16 @@ pub trait Measure:
     + SaturatingSub
     + Sum
 {
-    fn clear(&mut self);
+    fn reset(&mut self);
 }
 
 pub trait MeasuredBTreeData: Clone + Debug + Eq + PartialEq {
     type Measure: Measure;
 
-    fn measure(&self) -> Self::Measure;
+    fn get_measure(&self) -> Self::Measure;
 
     /// Modifies `self` to become the left half, and returns the right half.
-    fn split_at(&mut self, offset: Self::Measure) -> Self;
+    fn split_off(&mut self, offset: Self::Measure) -> Self;
 
     /// Try to merge `other` into `self`
     ///
@@ -172,13 +172,13 @@ where
         + SaturatingSub
         + Sum,
 {
-    fn clear(&mut self) {
+    fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
 #[must_use]
-pub fn get_min_cap(is_leaf: bool) -> usize {
+pub fn get_min_cap(is_leaf: bool) -> u8 {
     if is_leaf {
         DATA_CAPACITY / 2
     } else {
@@ -192,14 +192,14 @@ where
 {
     pub fn new_leaf() -> Self {
         Self::Leaf {
-            data: Vec::with_capacity(DATA_CAPACITY),
+            data: Vec::with_capacity(DATA_CAPACITY as usize),
             measure: T::Measure::default(),
         }
     }
 
     pub fn new_internal() -> Self {
         Self::Internal {
-            children: Vec::with_capacity(NODE_CHILDREN_CAPACITY),
+            children: Vec::with_capacity(NODE_CHILDREN_CAPACITY as usize),
             measure: T::Measure::default(),
         }
     }
@@ -236,11 +236,11 @@ where
         match self {
             Self::Leaf { data, measure } => {
                 data.clear();
-                measure.clear();
+                measure.reset();
             }
             Self::Internal { children, measure } => {
                 children.clear();
-                measure.clear();
+                measure.reset();
             }
         }
     }
@@ -268,8 +268,8 @@ where
     #[must_use]
     pub fn is_full(&self) -> bool {
         match self {
-            Self::Leaf { data, .. } => data.len() >= DATA_CAPACITY,
-            Self::Internal { children, .. } => children.len() >= NODE_CHILDREN_CAPACITY,
+            Self::Leaf { data, .. } => data.len() >= DATA_CAPACITY as usize,
+            Self::Internal { children, .. } => children.len() >= NODE_CHILDREN_CAPACITY as usize,
         }
     }
 }
@@ -446,7 +446,7 @@ where
                 .expect("Left leaf underflowed during borrow");
 
             // Recalculate left measure
-            *left_measure = left_data.iter().map(|p| p.measure()).sum();
+            *left_measure = left_data.iter().map(|p| p.get_measure()).sum();
             piece
         };
 
@@ -462,7 +462,7 @@ where
             right_data.insert(0, borrowed_piece);
 
             // Recalculate right measure
-            *right_measure = right_data.iter().map(|p| p.measure()).sum();
+            *right_measure = right_data.iter().map(|p| p.get_measure()).sum();
         }
     }
 
@@ -479,7 +479,7 @@ where
             let piece = right_data.remove(0); // Panics if right_data is empty, which it shouldn't be
 
             // Recalculate right measure
-            *right_measure = right_data.iter().map(|p| p.measure()).sum();
+            *right_measure = right_data.iter().map(|p| p.get_measure()).sum();
             piece
         };
 
@@ -495,7 +495,7 @@ where
             left_data.push(borrowed_piece);
 
             // Recalculate left measure
-            *left_measure = left_data.iter().map(|p| p.measure()).sum();
+            *left_measure = left_data.iter().map(|p| p.get_measure()).sum();
         }
     }
 
@@ -522,7 +522,7 @@ where
             keep_data.append(&mut dropped_data);
 
             // Recalculate kept measure
-            *keep_measure = keep_data.iter().map(|p| p.measure()).sum();
+            *keep_measure = keep_data.iter().map(|p| p.get_measure()).sum();
         }
 
         // 3. The drop_idx leaf is now empty. Deallocate it!
@@ -653,7 +653,7 @@ where
     /// ```
     fn split_leaf(&mut self, pool_idx: PoolIndex) -> PoolIndex {
         let new_leaf_idx = self.allocate_node(true);
-        let mut right_data = Vec::with_capacity(DATA_CAPACITY);
+        let mut right_data = Vec::with_capacity(DATA_CAPACITY as usize);
 
         {
             let MeasuredBTreeNode::Leaf { data, measure } = &mut self.pool[pool_idx] else {
@@ -662,7 +662,7 @@ where
             let split_at = data.len() / 2;
 
             right_data.extend(data.drain(split_at..));
-            *measure = data.iter().map(|p| p.measure()).sum();
+            *measure = data.iter().map(|p| p.get_measure()).sum();
         }
 
         let MeasuredBTreeNode::Leaf {
@@ -672,7 +672,10 @@ where
         else {
             unreachable!("`split_leaf` is called within a `MeasuredBTreeNode::LeafNode`")
         };
-        let right_weight = right_data.iter().map(|d| d.measure()).sum::<T::Measure>();
+        let right_weight = right_data
+            .iter()
+            .map(|d| d.get_measure())
+            .sum::<T::Measure>();
 
         *new_data = right_data;
         *new_measure = right_weight;
@@ -807,7 +810,7 @@ where
             unreachable!("`allocate_node(true)` must return a Leaf node.");
         };
 
-        *measure = data.measure();
+        *measure = data.get_measure();
         leaf_data.push(data);
 
         self.root_idx = Some(new_root_idx);
@@ -862,7 +865,7 @@ where
         target: T::Measure,
         data: T,
     ) -> Option<PoolIndex> {
-        *self.pool[pool_idx].mut_measure() += data.measure();
+        *self.pool[pool_idx].mut_measure() += data.get_measure();
 
         if self.pool[pool_idx].is_leaf() {
             self.insert_into_leaf(pool_idx, target, data);
@@ -906,7 +909,7 @@ where
 
             children.insert(target_child_idx + 1, new_sibling_idx);
 
-            if children.len() >= NODE_CHILDREN_CAPACITY {
+            if children.len() >= NODE_CHILDREN_CAPACITY as usize {
                 return Some(self.split_internal(pool_idx));
             }
         }
@@ -940,17 +943,17 @@ where
         let mut local_target = target;
         let zero = T::Measure::default();
 
-        while data_idx < leaf_data.len() && local_target > leaf_data[data_idx].measure() {
-            local_target -= leaf_data[data_idx].measure();
+        while data_idx < leaf_data.len() && local_target > leaf_data[data_idx].get_measure() {
+            local_target -= leaf_data[data_idx].get_measure();
             data_idx += 1;
         }
 
         // If we are inside an item, split it.
         if data_idx < leaf_data.len()
             && local_target > zero
-            && local_target < leaf_data[data_idx].measure()
+            && local_target < leaf_data[data_idx].get_measure()
         {
-            let right_half = leaf_data[data_idx].split_at(local_target);
+            let right_half = leaf_data[data_idx].split_off(local_target);
 
             if leaf_data[data_idx].try_merge(&data) {
                 leaf_data.insert(data_idx + 1, right_half);
@@ -1074,7 +1077,7 @@ where
         for (sibling_idx, is_right) in siblings.into_iter().flatten() {
             let sibling_pool_idx = self.get_child_idx(parent_pool_idx, sibling_idx);
 
-            if self.node_len(sibling_pool_idx) <= min_cap {
+            if self.node_len(sibling_pool_idx) <= min_cap as usize {
                 continue;
             }
 
@@ -1128,7 +1131,7 @@ where
                 let min_cap = get_min_cap(is_leaf);
 
                 // If the child is healthy, break out of the borrow loop
-                if self.node_len(child_pool_idx) >= min_cap {
+                if self.node_len(child_pool_idx) >= min_cap as usize {
                     break;
                 }
 
@@ -1276,15 +1279,15 @@ where
         let mut local_target = target;
         let zero = T::Measure::default();
 
-        while idx < leaf_data.len() && local_target >= leaf_data[idx].measure() {
-            local_target -= leaf_data[idx].measure();
+        while idx < leaf_data.len() && local_target >= leaf_data[idx].get_measure() {
+            local_target -= leaf_data[idx].get_measure();
             idx += 1;
         }
 
         let mut local_length = length;
 
         while idx < leaf_data.len() && local_length > zero {
-            let data_measure = leaf_data[idx].measure();
+            let data_measure = leaf_data[idx].get_measure();
             let overlap = min(local_length, data_measure - local_target);
 
             if local_target == zero && overlap == data_measure {
@@ -1293,7 +1296,7 @@ where
             } else if local_target == zero {
                 // 2. Left trim: Deletion starts at the beginning of the data.
                 // `split_at(overlap)` makes `self` the deleted left part, and returns the right part to keep.
-                let right_keep = leaf_data[idx].split_at(overlap);
+                let right_keep = leaf_data[idx].split_off(overlap);
 
                 leaf_data[idx] = right_keep; // Overwrite the piece with the kept portion
 
@@ -1302,7 +1305,7 @@ where
                 // 3. Right trim: Deletion ends exactly at the end of the data.
                 // `split_at(target)` makes `self` the left part to keep.
                 // We simply drop the returned right part (the deleted portion) into the void.
-                let _discarded_right = leaf_data[idx].split_at(target);
+                let _discarded_right = leaf_data[idx].split_off(target);
 
                 idx += 1;
             } else {
@@ -1310,9 +1313,9 @@ where
                 // We need to keep the left side and the right side, but drop the middle.
 
                 // First, split off the left side to keep it
-                let mut mid_and_right = leaf_data[idx].split_at(target);
+                let mut mid_and_right = leaf_data[idx].split_off(target);
                 // Then, split the remainder to isolate the middle (which we drop) and the right (which we keep)
-                let right_keep = mid_and_right.split_at(overlap);
+                let right_keep = mid_and_right.split_off(overlap);
 
                 leaf_data.insert(idx + 1, right_keep);
 
@@ -1456,7 +1459,7 @@ where
                         .iter()
                         .enumerate()
                         .find_map(|(idx, data_entry)| {
-                            let entry_measure = data_entry.measure();
+                            let entry_measure = data_entry.get_measure();
 
                             if local_target < entry_measure {
                                 Some(idx)
@@ -1492,7 +1495,7 @@ where
                 let mut current_offset = T::Measure::default();
 
                 for item in data {
-                    let item_measure = item.measure();
+                    let item_measure = item.get_measure();
                     let next_offset = current_offset + item_measure;
 
                     // If target falls inside this item (or exactly at its start)
@@ -1557,7 +1560,7 @@ where
             let mut current = T::Measure::default();
 
             for item in data {
-                let next = current + item.measure();
+                let next = current + item.get_measure();
 
                 if target >= current && local_target < next {
                     return Some((item, local_target - current));
