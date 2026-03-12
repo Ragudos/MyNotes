@@ -176,7 +176,11 @@ fn create_line_ending_impl(bytes: &[u8]) -> LineEnding {
     let scores = LineEnding::calculate_score(bytes);
     let max_score = scores.cr_lf.max(scores.cr).max(scores.lf);
 
-    if max_score == 0 || scores.cr_lf == max_score {
+    // TODO:
+    // Get user's pereferred default line ending
+    if max_score == 0 {
+        LineEnding::from_current_platform()
+    } else if scores.cr_lf == max_score {
         LineEnding::CRLF
     } else if scores.cr == max_score {
         LineEnding::CR
@@ -281,10 +285,16 @@ mod line_ending_tests {
 
     #[test]
     fn handles_mixed_line_edge_cases() {
+        // If, in create_line_ending, the TODO is imlpemented already,
+        // then change this test to match it
+
         // CASE 1: All line endings are equal
-        assert_eq!(create_line_ending("l1\nl2\r\nl3\rl4"), LineEnding::CRLF,);
+        assert_eq!(
+            create_line_ending("l1\nl2\r\nl3\rl4"),
+            LineEnding::from_current_platform()
+        );
         // CASE 2: Empty string
-        assert_eq!(create_line_ending(""), LineEnding::CRLF);
+        assert_eq!(create_line_ending(""), LineEnding::from_current_platform());
     }
 
     #[test]
