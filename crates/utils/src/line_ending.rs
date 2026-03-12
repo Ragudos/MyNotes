@@ -1,6 +1,6 @@
 use memchr::memchr2_iter;
 
-use crate::types::{CARRIAGE_RETURN_BYTE, NEWLINE_BYTE};
+use crate::types::{CARRIAGE_RETURN_BYTE, MAX_LINE_ENDING_SAMPLE_SIZE, NEWLINE_BYTE};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LineEndingScores {
@@ -154,6 +154,13 @@ impl LineEnding {
 /// Defaults to `CRLF` if all line endings appear equally
 /// or if there are no line endings.
 ///
+/// # Note
+///
+/// This creates a sample of the text to analyze, so it doesn't have to analyze
+/// the whole text if it's too big. This is because line ending patterns are usually
+/// consistent throughout a file, and analyzing a sample can provide a good indication
+/// of the overall line ending style without the overhead of processing the entire file.
+///
 /// # Example
 ///
 /// ```
@@ -169,7 +176,9 @@ impl LineEnding {
 /// ```
 #[inline]
 pub fn create_line_ending<T: AsRef<[u8]>>(text: T) -> LineEnding {
-    create_line_ending_impl(text.as_ref())
+    let bytes = text.as_ref();
+    let limit = bytes.len().min(MAX_LINE_ENDING_SAMPLE_SIZE);
+    create_line_ending_impl(&bytes[..limit])
 }
 
 fn create_line_ending_impl(bytes: &[u8]) -> LineEnding {
@@ -178,7 +187,9 @@ fn create_line_ending_impl(bytes: &[u8]) -> LineEnding {
 
     // TODO:
     // Get user's pereferred default line ending
-    if max_score == 0 {
+    if max_score == 0
+        || (scores.cr_lf == max_score && scores.cr == max_score && scores.lf == max_score)
+    {
         LineEnding::from_current_platform()
     } else if scores.cr_lf == max_score {
         LineEnding::CRLF

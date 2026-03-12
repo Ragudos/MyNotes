@@ -46,6 +46,8 @@ pub(crate) const BTREE_DATA_MIN_CAP: u8 = MINIMUM_BTREE_DEGREE - 1;
 /// balanced and that all leaf nodes are at the same depth.
 pub(crate) const BTREE_CHILDREN_MIN_CAP: u8 = MINIMUM_BTREE_DEGREE;
 
+pub(crate) const MAX_LINE_ENDING_SAMPLE_SIZE: usize = 8192; // 8 KB, which is a common buffer size for file I/O operations and should be sufficient to capture line ending patterns in most files.
+
 pub const NEWLINE_BYTE: u8 = b'\n';
 pub const CARRIAGE_RETURN_BYTE: u8 = b'\r';
 
