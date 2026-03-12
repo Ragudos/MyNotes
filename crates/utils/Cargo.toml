@@ -5,5 +5,12 @@ license-file.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[[bench]]
+name = "line_ending_bench"
+harness = false
+
 [dependencies]
 memchr = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
