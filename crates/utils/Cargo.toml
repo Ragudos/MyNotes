@@ -1,5 +1,5 @@
 [package]
-name = "mynotes_utils"
+name = "utils"
 version.workspace = true
 license-file.workspace = true
 edition.workspace = true

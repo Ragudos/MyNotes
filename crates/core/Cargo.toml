@@ -1,9 +1,10 @@
 [package]
-name = "mynotes_gui"
+name = "core"
 version.workspace = true
-license-file.workspace = true
 edition.workspace = true
+readme.workspace = true
+license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
-fltk = { workspace = true }
+thiserror = { workspace = true }
