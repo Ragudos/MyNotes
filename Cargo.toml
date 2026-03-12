@@ -14,7 +14,6 @@ fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
 thiserror = "2.0.18"
 memchr = "2.8.0"
 num-traits = "0.2.19"
-directories = "5.0.1"
 # DEV dependencies
 criterion = "0.8.2"
 dhat = "0.3.3"
