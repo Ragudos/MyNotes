@@ -5,33 +5,33 @@ An extremely lightweight and fast text editor that uses as little memory as poss
 ## GOALS
 
 - Initial prototype
-    - [x] Basic Piece Table
-    - [x] B-Tree for line indexing
-    - [x] Opening a file from a path
-    - [x] TextBuffer to hold the two together
-    - [x] Cursor with anchor and head
-    - [x] History API to undo and redo
-    - [x] Document to hold all state together as one public-facing API    
-    - [x] Simple UI for opening file chooser
-    - [x] Cursor with selection in mind
-    - [x] Viewport with scrolling
-    - [x] Render opened text file onto viewport
-    - [x] Deletion of selection
-    - [x] Cursor following viewport (scrolloff) when scrolling like in NeoVim
-    - [x] line numbers
-    - [x] arrow keys to navigate texts
-    - [ ] double clicking selects a word, then a line, then a paragraph.
-    - [x] Tests for core data structures
-    - [ ] Tests for UI
-    - [ ] Decouple reusable logic used into `crates/utils`
-    - [ ] Decouple all IO operations in `crates/io`
-    - [ ] Select all (`Ctrl` + `a`)
-    - [ ] Save through  `Ctrl` + `s`
-    - [x] Selection while scrolling
-    - [x] Saving to a file
-    - [x] Saving to an existing file (modifying it)
-    - [ ] Open 1GB or very large file/s (hardest :p) without crashing and using as very low memory as possible
-    - [ ] Edit 1GB or very large file/s without crashing and using as very low memory as possible
+  - [x] Basic Piece Table
+  - [x] B-Tree for line indexing
+  - [x] Opening a file from a path
+  - [x] TextBuffer to hold the two together
+  - [x] Cursor with anchor and head
+  - [x] History API to undo and redo
+  - [x] Document to hold all state together as one public-facing API
+  - [x] Simple UI for opening file chooser
+  - [x] Cursor with selection in mind
+  - [x] Viewport with scrolling
+  - [x] Render opened text file onto viewport
+  - [x] Deletion of selection
+  - [x] Cursor following viewport (scrolloff) when scrolling like in NeoVim
+  - [x] line numbers
+  - [x] arrow keys to navigate texts
+  - [ ] double clicking selects a word, then a line, then a paragraph.
+  - [x] Tests for core data structures
+  - [ ] Tests for UI
+  - [ ] Decouple reusable logic used into `crates/utils`
+  - [ ] Decouple all IO operations in `crates/io`
+  - [ ] Select all (`Ctrl` + `a`)
+  - [ ] Save through  `Ctrl` + `s`
+  - [x] Selection while scrolling
+  - [x] Saving to a file
+  - [x] Saving to an existing file (modifying it)
+  - [ ] Open 1GB or very large file/s (hardest :p) without crashing and using as very low memory as possible
+  - [ ] Edit 1GB or very large file/s without crashing and using as very low memory as possible
 
 ## NOTES
 
