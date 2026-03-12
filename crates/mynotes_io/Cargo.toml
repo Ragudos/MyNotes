@@ -7,5 +7,5 @@ publish.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-directories = { workspace = true }
+directories = "6.0.0"
 memmap2 = "0.9.10"
