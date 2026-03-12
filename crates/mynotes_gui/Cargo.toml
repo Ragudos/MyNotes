@@ -1,0 +1,9 @@
+[package]
+name = "mynotes_gui"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+fltk = { workspace = true }

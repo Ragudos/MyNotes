@@ -1,0 +1,16 @@
+[package.metadata.packager]
+identifier = "com.mynotes.app"
+product-name = "MyNotes"
+formats = ["all"]
+out-dir = "../../target/release/installers"
+before-packaging-command = "cargo build -p MyNotes --release"
+icons = ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"]
+
+[package]
+name = "mynotes"
+version.workspace = true
+license-file.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
