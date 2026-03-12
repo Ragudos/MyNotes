@@ -1,5 +1,3 @@
-pub(crate) type ObjectPoolIndex = usize;
-
 pub(crate) const MINIMUM_BTREE_DEGREE: u8 = 16;
 /// # Reasoning
 ///
@@ -50,3 +48,5 @@ pub(crate) const BTREE_CHILDREN_MIN_CAP: u8 = MINIMUM_BTREE_DEGREE;
 
 pub const NEWLINE_BYTE: u8 = b'\n';
 pub const CARRIAGE_RETURN_BYTE: u8 = b'\r';
+
+pub(crate) type ObjectPoolIndex = usize;
