@@ -1,4 +1,6 @@
 pub mod btree;
+pub mod cursor;
+pub mod document;
 pub mod enums;
 pub mod history;
 pub mod line_ending;

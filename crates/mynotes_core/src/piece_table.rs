@@ -9,20 +9,18 @@ pub enum BufferKind {
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Piece {
     pub buffer_kind: BufferKind,
-    pub start: u64, // UPGRADED
-    pub end: u64,   // UPGRADED
+    pub start: u64,
+    pub end: u64,
 }
 
 impl MeasuredBTreeData for Piece {
-    type Measure = u64; // UPGRADED
+    type Measure = u64;
 
     fn get_measure(&self) -> Self::Measure {
         self.end - self.start
     }
 
     fn split_off(&mut self, offset: Self::Measure) -> Self {
-        // Just be careful with this assert: ensure your BTree never accidentally
-        // calls split_off with an offset equal to the measure itself!
         debug_assert!(offset > 0 && offset < self.get_measure());
 
         let split_point = self.start + offset;
@@ -95,5 +93,14 @@ impl PieceTable {
         }
 
         self.tree.delete(start..start + length)
+    }
+
+    /// Returns a zero-allocation iterator over the pieces in order.
+    pub fn iter(&self) -> impl Iterator<Item = &Piece> {
+        self.tree.iter()
+    }
+
+    pub fn get_all_pieces(&self) -> Vec<Piece> {
+        self.tree.get_all_data()
     }
 }

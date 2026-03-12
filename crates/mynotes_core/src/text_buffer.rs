@@ -1,256 +1,192 @@
-// Assuming these exist in your crate
-use mynotes_io::enums::MmapFileError;
-use std::fs::{File, OpenOptions, rename};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
-use std::{io, thread};
+use std::{borrow::Borrow, io, sync::Arc};
+
+use mynotes_io::{create_next_untitled_file, enums::MmapFileError, mmap::MmapFile};
 use thiserror::Error;
+
+use crate::{
+    enums::ZeroCopyChunk,
+    line_ending::LineEnding,
+    line_tracker::LineTracker,
+    piece_table::{BufferKind, Piece, PieceTable},
+};
 
 #[derive(Error, Debug)]
 pub enum TextBufferError {
-    #[error("IO Error: {0}")]
-    IOError(#[from] io::Error),
-    #[error("Memory Map Error: {0}")]
-    MmapFileError(#[from] MmapFileError),
-    #[error("Serialization Error: {0}")]
-    SerializationError(String),
-    #[error("Buffer has no associated file path. Use save_as().")]
-    NoFilePath,
-    #[error("Swap file corruption: {0}")]
-    SwapCorruption(String),
-}
-
-pub type TextBufferResult<T> = Result<T, TextBufferError>;
-
-/// Messages sent from the background saving thread to the main/UI thread.
-#[derive(Debug)]
-pub enum SaveProgress {
-    /// Save operation has started
-    Started { total_bytes: usize },
-    /// A chunk of bytes has been successfully written
-    Written { bytes: usize },
-    /// Save completed successfully. Contains the path to the newly saved file.
-    Finished { path: PathBuf },
-    /// An error occurred during the background save
-    Error(TextBufferError),
-}
-
-pub type ProgressSender = Sender<SaveProgress>;
-
-/// Represents a single change in the document for the Write-Ahead Log.
-#[derive(Debug)]
-pub enum JournalOp {
-    Insert {
-        offset: usize,
-        add_buf_offset: usize,
-        len: usize,
-    },
-    Delete {
-        offset: usize,
-        len: usize,
-    },
-}
-
-impl JournalOp {
-    /// Serializes the operation into a compact byte array for fast disk logging.
-    pub fn to_bytes(&self) -> Vec<u8> {
-        // Implementation note: In a real app, use `bincode` or manually pack into [u8; 25]
-        match self {
-            JournalOp::Insert {
-                offset,
-                add_buf_offset,
-                len,
-            } => {
-                let mut buf = vec![0u8]; // 0 = Insert
-                buf.extend_from_slice(&offset.to_le_bytes());
-                buf.extend_from_slice(&add_buf_offset.to_le_bytes());
-                buf.extend_from_slice(&len.to_le_bytes());
-                buf
-            }
-            JournalOp::Delete { offset, len } => {
-                let mut buf = vec![1u8]; // 1 = Delete
-                buf.extend_from_slice(&offset.to_le_bytes());
-                buf.extend_from_slice(&len.to_le_bytes());
-                buf
-            }
-        }
-    }
+    #[error("Failed to create memory-mapped file: {0}")]
+    MmapFileCreationError(#[from] MmapFileError),
+    #[error("Failed to create temporary file: {0}")]
+    IoError(#[from] io::Error),
 }
 
 #[derive(Debug)]
-pub struct SwapManager {
-    add_file: Option<File>,
-    log_file: Option<File>,
-    pub base_path: PathBuf,
+pub struct TextBuffer {
+    mmap_file: Arc<MmapFile>,
+    append_buffer: Arc<Vec<u8>>,
+    piece_table: PieceTable,
+    line_tracker: LineTracker,
+    line_ending: LineEnding,
+    is_dirty: bool,
 }
 
-impl SwapManager {
-    /// # Purpose
-    /// Initializes a new SwapManager, creating append-only `.swp.add` and `.swp.log` files
-    /// at the specified base path.
-    // # Parameters
-    /// - **`base_path`**: The path prefix for the swap files (e.g., `~/.local/share/myapp/sessions/uuid` or `./main.rs`).
-    // # Panics
-    /// - **`None`**: This function does not intentionally panic.
-    /// # Errors
-    /// - **`TextBufferError::IOError`**: Happens when the OS denies file creation or appending rights.
-    /// # Returns
-    /// - **`TextBufferResult<Self>`**: A new instance of `SwapManager`.
-    pub fn new<P: AsRef<Path>>(base_path: P) -> TextBufferResult<Self> {
-        let path = base_path.as_ref();
-
-        let add_path = path.with_extension("swp.add");
-        let log_path = path.with_extension("swp.log");
-
-        let add_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(add_path)?;
-        let log_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(log_path)?;
+impl TextBuffer {
+    pub fn new() -> Result<Self, TextBufferError> {
+        let (_, file_path) = create_next_untitled_file()?;
+        let mmap_file = Arc::new(MmapFile::open_file(file_path)?);
+        let append_buffer = Arc::new(Vec::new());
+        let piece_table = PieceTable::new();
+        let line_tracker = LineTracker::new();
+        let line_ending = LineEnding::from_current_platform();
 
         Ok(Self {
-            add_file: Some(add_file),
-            log_file: Some(log_file),
-            base_path: path.to_path_buf(),
+            mmap_file,
+            append_buffer,
+            piece_table,
+            line_tracker,
+            line_ending,
+            is_dirty: false,
         })
     }
 
-    /// # Purpose
-    /// Appends text to the add buffer file and logs the insert operation to the journal.
-    /// # Parameters
-    /// - **`offset`**: The position in the document where text is inserted.
-    /// - **`add_buf_offset`**: The position in the add_buf where this text begins.
-    /// - **`text`**: The actual bytes being inserted.
-    /// # Panics
-    /// - **`None`**: This function does not intentionally panic.
-    /// # Errors
-    /// - **`TextBufferError::IOError`**: Happens if writing to the disk fails (e.g., disk full).
-    /// # Returns
-    /// - **`TextBufferResult<()>`**: Indicates success.
-    pub fn log_insert(
-        &mut self,
-        offset: usize,
-        add_buf_offset: usize,
-        text: &[u8],
-    ) -> TextBufferResult<()> {
-        if let Some(f) = &mut self.add_file {
-            f.write_all(text)?;
+    pub fn empty_for_test() -> Self {
+        Self {
+            mmap_file: Arc::new(MmapFile::new().unwrap()),
+            append_buffer: Arc::new(Vec::new()),
+            piece_table: PieceTable::new(),
+            line_tracker: LineTracker::new(),
+            line_ending: LineEnding::from_current_platform(),
+            is_dirty: false,
+        }
+    }
+
+    /// Instantly opens a file of any size using memory mapping.
+    pub fn open(file_path: impl AsRef<std::path::Path>) -> Result<Self, TextBufferError> {
+        let mmap_file = Arc::new(MmapFile::open_file(file_path)?);
+        let file_len = mmap_file.len();
+
+        let mut piece_table = PieceTable::new();
+
+        if file_len > 0 {
+            // Insert the entire file as a single piece.
+            // Adjust this depending on your PieceTable's exact insert signature!
+            // E.g., tree.insert(0, Piece { buffer_kind: BufferKind::Original, start: 0, end: file_len as u64 })
+            let initial_piece = Piece {
+                buffer_kind: BufferKind::Original,
+                start: 0,
+                end: file_len as u64,
+            };
+            // Assuming your tree inserts by doc_offset
+            piece_table.tree.insert(0, initial_piece).unwrap();
         }
 
-        let op = JournalOp::Insert {
-            offset,
-            add_buf_offset,
-            len: text.len(),
-        };
-        if let Some(f) = &mut self.log_file {
-            f.write_all(&op.to_bytes())?;
+        Ok(Self {
+            mmap_file,
+            append_buffer: Arc::new(Vec::new()),
+            piece_table,
+            line_tracker: LineTracker::new(), // Note: You'll eventually want to parse line breaks here or lazily
+            line_ending: LineEnding::from_current_platform(),
+            is_dirty: false,
+        })
+    }
+
+    /// Safely reloads the file from disk after an external modification is detected.
+    pub fn reload_from_disk(&mut self) -> Result<(), TextBufferError> {
+        // 1. If the user has unsaved changes in the append_buffer, you usually
+        // prompt them here ("File changed on disk, overwrite your changes?").
+        // If we want to force-reload, we just clear everything.
+
+        let current_path = self.mmap_file.get_path().to_path_buf();
+
+        // 2. CRITICAL: We must drop the old MmapFile to release the OS locks
+        // and prevent a SIGBUS crash before we try to read the new state.
+        // Replacing it temporarily with an empty one works perfectly.
+        self.mmap_file = Arc::new(MmapFile::new().unwrap());
+
+        // 3. Now safely map the newly modified file
+        let new_mmap = Arc::new(MmapFile::open_file(&current_path)?);
+        let new_file_len = new_mmap.len() as u64;
+
+        self.mmap_file = new_mmap;
+        self.append_buffer = Arc::new(Vec::new()); // Wipe typing history
+        self.piece_table = PieceTable::new(); // Wipe the old tree
+        self.is_dirty = false;
+
+        // 4. Insert the new file as a single clean piece
+        if new_file_len > 0 {
+            let initial_piece = Piece {
+                buffer_kind: BufferKind::Original,
+                start: 0,
+                end: new_file_len,
+            };
+            self.piece_table.tree.insert(0, initial_piece).unwrap();
         }
+
         Ok(())
     }
 
-    /// # Purpose
-    /// Cleans up the swap files from the disk. Used after a successful save or clean exit.
-    /// # Parameters
-    /// - **`None`**
-    /// # Panics
-    /// - **`None`**: This function does not intentionally panic.
-    /// # Errors
-    /// - **`TextBufferError::IOError`**: Happens if file deletion fails.
-    /// # Returns
-    /// - **`TextBufferResult<()>`**: Indicates success.
-    pub fn clear_swaps(&mut self) -> TextBufferResult<()> {
-        self.add_file = None;
-        self.log_file = None;
-        let add_path = self.base_path.with_extension("swp.add");
-        let log_path = self.base_path.with_extension("swp.log");
+    pub fn insert(&mut self, index: usize, text: &[u8]) {}
 
-        let _ = std::fs::remove_file(add_path);
-        let _ = std::fs::remove_file(log_path);
-        Ok(())
+    pub fn delete(&mut self, index: usize, length: usize) {}
+
+    pub fn iter(&self) -> TextBufferChunkIter<impl Iterator<Item = &Piece>> {
+        TextBufferChunkIter {
+            mmap_file: Arc::clone(&self.mmap_file),
+            append_buffer: Arc::clone(&self.append_buffer),
+            piece_iter: self.piece_table.iter(),
+        }
+    }
+
+    /// 2. Snapshot iterator for the Detached Background Save Thread
+    pub fn into_save_iter(
+        &self,
+    ) -> TextBufferChunkIter<impl Iterator<Item = Piece> + Send + 'static> {
+        // Instantly copies the 24-byte structs into a Vec
+        let pieces_snapshot = self.piece_table.get_all_pieces();
+
+        TextBufferChunkIter {
+            mmap_file: Arc::clone(&self.mmap_file),
+            append_buffer: Arc::clone(&self.append_buffer),
+            // .into_iter() takes ownership, making it 'static and safe for threads
+            piece_iter: pieces_snapshot.into_iter(),
+        }
+    }
+
+    pub fn get_line_ending(&self) -> &LineEnding {
+        &self.line_ending
+    }
+
+    pub fn get_is_dirty(&self) -> bool {
+        self.is_dirty
     }
 }
 
-// Assuming you have a way to clone the tree/state or extract an iterator of chunks from PieceTable
-// For this example, we assume we can get an Iterator of `&[u8]` chunks representing the document.
+pub struct TextBufferChunkIter<I> {
+    mmap_file: Arc<MmapFile>,
+    append_buffer: Arc<Vec<u8>>,
+    piece_iter: I,
+}
 
-pub struct BackgroundSaver;
+impl<I, P> Iterator for TextBufferChunkIter<I>
+where
+    I: Iterator<Item = P>,
+    P: Borrow<Piece>,
+{
+    type Item = ZeroCopyChunk;
 
-impl BackgroundSaver {
-    /// # Purpose
-    /// Spawns a background thread to safely write document contents to a temporary file
-    /// and atomically rename it, reporting progress via a channel.
-    /// # Parameters
-    /// - **`target_path`**: The final destination path for the saved file.
-    /// - **`chunks`**: A vector of byte arrays representing the full document text. (Extracted from PieceTable).
-    /// - **`progress_tx`**: The channel sender to report progress to the UI.
-    /// # Panics
-    /// - **`None`**: Thread panics are isolated; main application will not crash.
-    /// # Errors
-    /// - **`None`**: Errors are sent through the `progress_tx` channel instead of returned.
-    /// # Returns
-    /// - **`()`**: Spawns a thread and returns immediately.
-    pub fn save_async(
-        target_path: PathBuf,
-        chunks: Vec<Vec<u8>>, // In a real app, pass a cloned snapshot of the PieceTable and read from Mmap/AddBuf directly
-        progress_tx: ProgressSender,
-    ) {
-        thread::spawn(move || {
-            let total_bytes: usize = chunks.iter().map(|c| c.len()).sum();
+    fn next(&mut self) -> Option<Self::Item> {
+        let piece = self.piece_iter.next()?;
+        let piece = piece.borrow();
 
-            if progress_tx
-                .send(SaveProgress::Started { total_bytes })
-                .is_err()
-            {
-                return; // Receiver dropped, abort reporting
-            }
-
-            // 1. Create adjacent temporary file
-            let file_name = target_path.file_name().unwrap_or_default();
-            let tmp_file_name = format!(".{}.tmp", file_name.to_string_lossy());
-            let tmp_path = target_path.with_file_name(tmp_file_name);
-
-            let mut tmp_file = match File::create(&tmp_path) {
-                Ok(f) => f,
-                Err(e) => {
-                    let _ = progress_tx.send(SaveProgress::Error(TextBufferError::IOError(e)));
-                    return;
-                }
-            };
-
-            // 2. Write chunks and report progress
-            for chunk in chunks {
-                if let Err(e) = tmp_file.write_all(&chunk) {
-                    let _ = progress_tx.send(SaveProgress::Error(TextBufferError::IOError(e)));
-                    return;
-                }
-                let _ = progress_tx.send(SaveProgress::Written { bytes: chunk.len() });
-            }
-
-            // 3. Sync to physical disk
-            if let Err(e) = tmp_file.sync_all() {
-                let _ = progress_tx.send(SaveProgress::Error(TextBufferError::IOError(e)));
-                return;
-            }
-
-            // 4. Atomic Rename
-            if let Err(e) = rename(&tmp_path, &target_path) {
-                let _ = progress_tx.send(SaveProgress::Error(TextBufferError::IOError(e)));
-                return;
-            }
-
-            // 5. Sync Directory (Unix)
-            #[cfg(target_family = "unix")]
-            if let Some(parent) = target_path.parent()
-                && let Ok(dir) = File::open(parent)
-            {
-                let _ = dir.sync_all();
-            }
-
-            let _ = progress_tx.send(SaveProgress::Finished { path: target_path });
-        });
+        match piece.buffer_kind {
+            BufferKind::Original => Some(ZeroCopyChunk::Mmap {
+                mmap: Arc::clone(&self.mmap_file),
+                index: piece.start as usize,
+                end_index: piece.end as usize,
+            }),
+            BufferKind::Add => Some(ZeroCopyChunk::AppendBuffer {
+                buffer: Arc::clone(&self.append_buffer),
+                index: piece.start as usize,
+                end_index: piece.end as usize,
+            }),
+        }
     }
 }

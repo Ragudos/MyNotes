@@ -14,3 +14,5 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+mynotes_core = { path = "../mynotes_core" }
+mynotes_io = { path = "../mynotes_io" }

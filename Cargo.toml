@@ -10,6 +10,7 @@ license-file = "LICENSE"
 publish = false
 
 [workspace.dependencies]
+memmap2 = "0.9.10"
 fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
 thiserror = "2.0.18"
 tempfile = "3.25.0"
@@ -18,3 +19,4 @@ memchr = "2.8.0"
 num-traits = "0.2.19"
 rand = "0.10.0"
 dhat = "0.3.3"
+directories = "5.0"

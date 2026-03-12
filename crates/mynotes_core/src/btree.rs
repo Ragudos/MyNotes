@@ -1573,6 +1573,59 @@ where
             unreachable!("Failed to get an internal node.");
         }
     }
+    /// Iteratively snapshots the entire B-Tree's data in order.
+    /// Calculates the exact capacity beforehand to guarantee zero reallocations.
+    pub fn get_all_data(&self) -> Vec<T> {
+        if self.root_idx.is_none() {
+            return Vec::new();
+        }
+
+        // 1. CALCULATE EXACT CAPACITY
+        // Sum the data lengths of every single leaf currently in the pool.
+        // Rust optimizes this into blazing-fast SIMD instructions.
+        let mut exact_capacity: usize = self
+            .pool
+            .iter()
+            .map(|node| match node {
+                MeasuredBTreeNode::Leaf { data, .. } => data.len(),
+                MeasuredBTreeNode::Internal { .. } => 0,
+            })
+            .sum();
+
+        // Subtract the data lengths of any leaves that are in the "free" list.
+        // This ensures we don't over-allocate for deleted nodes.
+        for &free_idx in &self.free_leaves_list {
+            if let MeasuredBTreeNode::Leaf { data, .. } = &self.pool[free_idx] {
+                exact_capacity -= data.len();
+            }
+        }
+
+        // 2. PERFECT ALLOCATION
+        let mut result = Vec::with_capacity(exact_capacity);
+
+        // 3. ITERATIVE TRAVERSAL
+        // A stack depth of 32 easily handles millions of items in a B-Tree.
+        let mut stack = Vec::with_capacity(32);
+        stack.push(self.root_idx.unwrap());
+
+        while let Some(node_idx) = stack.pop() {
+            match &self.pool[node_idx] {
+                MeasuredBTreeNode::Internal { children, .. } => {
+                    // Push in REVERSE order so the 0th child is at the top of the stack,
+                    // ensuring we process strictly left-to-right.
+                    for &child_idx in children.iter().rev() {
+                        stack.push(child_idx);
+                    }
+                }
+                MeasuredBTreeNode::Leaf { data, .. } => {
+                    // Blast the contiguous slice into our perfectly sized result vector
+                    result.extend(data.iter().cloned());
+                }
+            }
+        }
+
+        result
+    }
 }
 
 impl<T> Visualizer for MeasuredBTree<T>
@@ -1651,6 +1704,72 @@ where
                     pool_idx, label
                 );
             }
+        }
+    }
+}
+
+// The iterator struct that holds a reference to the tree
+pub struct MeasuredBTreeIter<'a, T: MeasuredBTreeData> {
+    tree: &'a MeasuredBTree<T>,
+
+    // Stack of node indices we still need to visit.
+    node_stack: Vec<PoolIndex>,
+
+    // The current slice of leaf data we are actively yielding from.
+    current_slice: &'a [T],
+}
+
+impl<'a, T: MeasuredBTreeData> Iterator for MeasuredBTreeIter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // 1. If we have items left in the current leaf, yield the first one natively.
+            // `split_first` safely pops the first element and updates the rest of the slice.
+            if let Some((first, rest)) = self.current_slice.split_first() {
+                self.current_slice = rest;
+                return Some(first);
+            }
+
+            // 2. The current slice is empty. Pop the next node from the stack.
+            // If the stack is empty, we are completely done iterating!
+            let next_idx = self.node_stack.pop()?;
+
+            // 3. Process the node
+            match &self.tree.pool[next_idx] {
+                MeasuredBTreeNode::Internal { children, .. } => {
+                    // Push children in REVERSE order.
+                    // This ensures the left-most child is at the top of the stack to be popped next.
+                    for &child_idx in children.iter().rev() {
+                        self.node_stack.push(child_idx);
+                    }
+                }
+                MeasuredBTreeNode::Leaf { data, .. } => {
+                    // We found a leaf! Load its data into our active slice.
+                    // The next iteration of the loop will instantly yield its first element.
+                    self.current_slice = data;
+                }
+            }
+        }
+    }
+}
+
+// Add the instantiation method to the tree itself
+impl<T: MeasuredBTreeData> MeasuredBTree<T> {
+    /// Returns a zero-allocation iterator over the data in the leaves.
+    pub fn iter(&self) -> MeasuredBTreeIter<'_, T> {
+        // Pre-allocate a small capacity. B-Trees are shallow,
+        // so a capacity of 32 easily supports millions of items.
+        let mut node_stack = Vec::with_capacity(32);
+
+        if let Some(root_idx) = self.root_idx {
+            node_stack.push(root_idx);
+        }
+
+        MeasuredBTreeIter {
+            tree: self,
+            node_stack,
+            current_slice: &[], // Start empty so the loop immediately pops the root
         }
     }
 }

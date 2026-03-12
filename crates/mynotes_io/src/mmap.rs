@@ -4,7 +4,7 @@ use std::cmp::min;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct MmapFile {
     /// Temporary solution to prevent external modification,
     /// resulting in UB or undefined behavior.
