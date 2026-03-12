@@ -10,13 +10,13 @@ license-file = "LICENSE"
 publish = false
 
 [workspace.dependencies]
-memmap2 = "0.9.10"
 fltk = { version = "1.5.22", features = ["no-images", "no-pango"] }
 thiserror = "2.0.18"
-tempfile = "3.25.0"
-criterion = "0.8.2"
 memchr = "2.8.0"
 num-traits = "0.2.19"
-rand = "0.10.0"
+directories = "5.0.1"
+# DEV dependencies
+criterion = "0.8.2"
 dhat = "0.3.3"
-directories = "5.0"
+tempfile = "3.25.0"
+rand = "0.10.0"

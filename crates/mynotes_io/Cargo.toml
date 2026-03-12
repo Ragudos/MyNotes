@@ -8,4 +8,4 @@ publish.workspace = true
 [dependencies]
 thiserror = { workspace = true }
 directories = { workspace = true }
-memmap2 = { workspace = true }
+memmap2 = "0.9.10"
