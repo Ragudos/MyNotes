@@ -1,3 +1,10 @@
+/// # Purpose
+///
+/// Used to determine the initial capacity of the `ObjectPool`.
+/// This is important to minimize the number of reallocations
+/// needed as objects are added to the pool, which can improve performance.
+pub(crate) const INITIAL_OBJECT_POOL_CAPACITY: usize = 1024;
+
 pub(crate) const MINIMUM_BTREE_DEGREE: u8 = 16;
 /// # Reasoning
 ///
