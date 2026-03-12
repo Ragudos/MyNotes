@@ -1,3 +1,8 @@
+//! A module for defining various types and constants used throughout the project. This includes
+//! constants for initial capacities of data structures, types for object pool indices, and more. This module
+//! serves as a central place for defining types and constants that are used across multiple modules in the project,
+//! helping to maintain consistency and avoid magic numbers scattered throughout the codebase.
+
 /// # Purpose
 ///
 /// Used to determine the initial capacity of the `ObjectPool`.
@@ -55,7 +60,9 @@ pub(crate) const BTREE_CHILDREN_MIN_CAP: u8 = MINIMUM_BTREE_DEGREE;
 
 pub(crate) const MAX_LINE_ENDING_SAMPLE_SIZE: usize = 8192; // 8 KB, which is a common buffer size for file I/O operations and should be sufficient to capture line ending patterns in most files.
 
+/// Represents the byte value for a line feed character (`\n`).
 pub const NEWLINE_BYTE: u8 = b'\n';
+/// Represents the byte value for a carriage return character (`\r`).
 pub const CARRIAGE_RETURN_BYTE: u8 = b'\r';
 
 pub(crate) type ObjectPoolIndex = usize;

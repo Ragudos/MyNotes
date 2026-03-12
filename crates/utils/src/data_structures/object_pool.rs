@@ -1,3 +1,6 @@
+//! A generic object pool implementation that allows for efficient reuse of objects.
+//! This module defines the `ObjectPool` struct, which manages a pool of reusable objects
+//! of type `T` that implement the `Poolable` trait.
 use crate::types::{INITIAL_OBJECT_POOL_CAPACITY, ObjectPoolIndex};
 
 pub(crate) struct PoolableWrapper<T> {
@@ -5,12 +8,18 @@ pub(crate) struct PoolableWrapper<T> {
     pub is_alive: bool,
 }
 
+/// A trait that defines the requirements for objects that can be managed by the `ObjectPool`.
 pub trait Poolable {
     #[must_use]
+    /// Creates a new instance of the poolable object.
     fn new() -> Self;
+
+    /// Resets the object to its initial state. This method is called when an object is deallocated to ensure that
+    /// it is ready for reuse without any leftover state from its previous usage.
     fn reset(&mut self);
 }
 
+/// A generic object pool that manages reusable objects of type `T` that implement the `Poolable` trait.
 pub struct ObjectPool<T>
 where
     T: Poolable,
@@ -23,6 +32,7 @@ impl<T> ObjectPool<T>
 where
     T: Poolable,
 {
+    /// Creates a new object pool with an initial capacity.
     pub fn new() -> Self {
         ObjectPool {
             pool: Vec::with_capacity(INITIAL_OBJECT_POOL_CAPACITY),
@@ -43,22 +53,21 @@ where
     /// # Examples
     ///
     /// ```
-    /// use utils::data_structures::object_pool::{ObjectPool, Poolable};
-    ///
-    /// struct MyObject {
-    ///     value: i32,
-    /// }
-    ///
-    /// impl Poolable for MyObject {
-    ///     fn new() -> Self {
-    ///        MyObject { value: 0 }
-    ///    }
-    ///
-    ///   fn reset(&mut self) {
-    ///       self.value = 0;
-    ///   }
-    /// }
-    ///
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// #
+    /// # struct MyObject {
+    /// #    value: i32,
+    /// # }
+    /// #
+    /// # impl Poolable for MyObject {
+    /// #   fn new() -> Self {
+    /// #       MyObject { value: 0 }
+    /// #   }
+    /// #
+    /// #   fn reset(&mut self) {
+    /// #       self.value = 0;
+    /// #   }
+    /// # }
     /// let mut pool = ObjectPool::<MyObject>::new();
     /// let index = pool.allocate();
     ///
@@ -91,22 +100,21 @@ where
     /// # Examples
     ///
     /// ```
-    /// use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// #
+    /// # struct MyObject {
+    /// #     value: i32,
+    /// # }
     ///
-    /// struct MyObject {
-    ///     value: i32,
-    /// }
-    ///
-    /// impl Poolable for MyObject {
-    ///     fn new() -> Self {
-    ///        MyObject { value: 0 }
-    ///    }
-    ///
-    ///     fn reset(&mut self) {
-    ///         self.value = 0;
-    ///     }
-    /// }
-    ///
+    /// # impl Poolable for MyObject {
+    /// #     fn new() -> Self {
+    /// #        MyObject { value: 0 }
+    /// #    }
+    /// #
+    /// #     fn reset(&mut self) {
+    /// #         self.value = 0;
+    /// #     }
+    /// # }
     /// let mut pool = ObjectPool::<MyObject>::new();
     /// let index = pool.allocate();
     ///
@@ -137,22 +145,21 @@ where
     /// # Examples
     ///
     /// ```
-    /// use utils::data_structures::object_pool::{ObjectPool, Poolable};
-    ///
-    /// struct MyObject {
-    ///     value: i32,
-    /// }
-    ///
-    /// impl Poolable for MyObject {
-    ///     fn new() -> Self {
-    ///         MyObject { value: 0 }
-    ///     }
-    ///
-    ///    fn reset(&mut self) {
-    ///        self.value = 0;
-    ///    }
-    /// }
-    ///
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// #
+    /// # struct MyObject {
+    /// #     value: i32,
+    /// # }
+    /// #
+    /// # impl Poolable for MyObject {
+    /// #     fn new() -> Self {
+    /// #         MyObject { value: 0 }
+    /// #     }
+    /// #
+    /// #    fn reset(&mut self) {
+    /// #        self.value = 0;
+    /// #    }
+    /// # }
     /// let mut pool = ObjectPool::<MyObject>::new();
     /// let index = pool.allocate();
     ///
@@ -176,22 +183,21 @@ where
     /// # Examples
     ///
     /// ```
-    /// use utils::data_structures::object_pool::{ObjectPool, Poolable};
-    ///
-    /// struct MyObject {
-    ///     value: i32,
-    /// }
-    ///
-    /// impl Poolable for MyObject {
-    ///     fn new() -> Self {
-    ///         MyObject { value: 0 }
-    ///     }
-    ///
-    ///    fn reset(&mut self) {
-    ///        self.value = 0;
-    ///    }
-    /// }
-    ///
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// #
+    /// # struct MyObject {
+    /// #     value: i32,
+    /// # }
+    /// #
+    /// # impl Poolable for MyObject {
+    /// #     fn new() -> Self {
+    /// #         MyObject { value: 0 }
+    /// #     }
+    /// #
+    /// #    fn reset(&mut self) {
+    /// #        self.value = 0;
+    /// #    }
+    /// # }
     /// let mut pool = ObjectPool::<MyObject>::new();
     /// let index = pool.allocate();
     ///
@@ -214,12 +220,60 @@ where
         })?
     }
 
+    /// # Purpose
+    ///
+    /// Returns the number of currently allocated (alive) objects in the pool.
+    /// This is calculated as the total number of objects in the pool minus the number of free indices.
+    /// This method provides a way to track how many objects are currently in use.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// # struct MyObject {
+    /// #     value: i32,
+    /// # }
+    /// # impl Poolable for MyObject {
+    /// #     fn new() -> Self {
+    /// #         MyObject { value: 0 }
+    /// #     }
+    /// #     fn reset(&mut self) {
+    /// #         self.value = 0;
+    /// #     }
+    /// # }
+    /// let mut pool = ObjectPool::<MyObject>::new();
+    /// pool.allocate();
+    /// assert_eq!(pool.len(), 1);
+    /// ```
     #[inline]
     #[must_use]
     pub fn len(&self) -> usize {
         self.pool.len() - self.free_object_indices.len()
     }
 
+    /// # Purpose
+    /// Returns `true` if there are no currently allocated (alive) objects in the pool, and `false` otherwise.
+    /// This method is a convenient way to check if the pool is currently empty (i.e
+    /// no objects are in use) without needing to compare the length to zero directly.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use utils::data_structures::object_pool::{ObjectPool, Poolable};
+    /// # struct MyObject {
+    /// #     value: i32,
+    /// # }
+    /// # impl Poolable for MyObject {
+    /// #     fn new() -> Self {
+    /// #         MyObject { value: 0 }
+    /// #     }
+    /// #     fn reset(&mut self) {
+    /// #         self.value = 0;
+    /// #     }
+    /// # }
+    /// let mut pool = ObjectPool::<MyObject>::new();
+    /// assert!(pool.is_empty());
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_empty(&self) -> bool {

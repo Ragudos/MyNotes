@@ -1,3 +1,8 @@
+//! A module for handling line endings in text files. This module provides functionality
+//! to detect and work with different types of line endings, such as LF (`\n`), CRLF (`\r\n`),
+//! and CR (`\r`). It includes functions to calculate the frequency of each line ending type in
+//! a given text and to determine the most common line ending style used in a text sample.
+
 use memchr::memchr2_iter;
 
 use crate::types::{CARRIAGE_RETURN_BYTE, MAX_LINE_ENDING_SAMPLE_SIZE, NEWLINE_BYTE};
@@ -9,6 +14,12 @@ pub(crate) struct LineEndingScores {
     pub cr: u64,
 }
 
+/// # Purpose
+///
+/// Represents the different types of line endings that can be found in text files.
+/// This enum is used to identify and work with the various line ending styles that
+/// may be present in text files, allowing for consistent handling of line breaks across
+/// different platforms and file formats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum LineEnding {
