@@ -15,6 +15,7 @@ use crate::data_structures::object_pool::Poolable;
 /// specific types of nodes (e.g., leaf nodes and internal nodes)
 /// that can exist in a measured B-tree.
 pub trait Node: Debug + Clone + Poolable {
+    /// The type of measure associated with this node.
     type NodeMeasure: Measure;
 
     /// Gets the measure associated with this node.
