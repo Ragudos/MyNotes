@@ -15,18 +15,15 @@ use crate::data_structures::object_pool::Poolable;
 /// specific types of nodes (e.g., leaf nodes and internal nodes)
 /// that can exist in a measured B-tree.
 pub trait Node: Debug + Clone + Poolable {
-    /// Creates a new instance of the node with default values.
-    #[must_use]
-    fn new() -> Self;
+    type NodeMeasure: Measure;
 
     /// Gets the measure associated with this node.
     #[must_use]
-    fn get_measure(&self) -> impl Measure;
+    fn get_measure(&self) -> Self::NodeMeasure;
 
     /// Gets a mutable reference to the measure associated with this node.
     #[must_use]
-    fn get_mut_measure(&mut self) -> &mut impl Measure;
-
+    fn get_mut_measure(&mut self) -> &mut Self::NodeMeasure;
     #[must_use]
     fn is_empty(&self) -> bool;
 }
