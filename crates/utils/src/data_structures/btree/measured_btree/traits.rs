@@ -24,8 +24,14 @@ pub trait Node: Debug + Clone + Poolable {
     /// Gets a mutable reference to the measure associated with this node.
     #[must_use]
     fn get_mut_measure(&mut self) -> &mut Self::NodeMeasure;
+
+    /// Checks if the node is empty (i.e., contains no data or children).
     #[must_use]
     fn is_empty(&self) -> bool;
+
+    /// Checks if the node is full (i.e., contains the maximum number of data items or children).
+    #[must_use]
+    fn is_full(&self) -> bool;
 }
 
 /// # Purpose
